@@ -5,8 +5,14 @@ import {
   updateEnemies,
   drawEnemies,
   handleBulletCollisions,
-  handlePlayerCollisions
+  handlePlayerCollisions,
+  projectiles,
+  updateProjectiles,
+  drawProjectiles,
+  handleProjectilePlayerCollision
 } from "./enemy.js";
+import { reload } from "./reload.js";
+import { spawnPowerups, drawAndHandlePowerups } from "./powerup.js";
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -16,7 +22,16 @@ const healthBar = document.getElementById("healthBar");
 const waveDisplay = document.getElementById("waveDisplay");
 
 // --- Player & Game State ---
-let player = { x: 0, y: 0, width: 40, height: 40, speed: 6, maxHealth: 5, health: 5 };
+let player = {
+  x: 0, y: 0, width: 40, height: 40,
+  speed: 6,
+  normalSpeed: 6,
+  sprintSpeed: 10,
+  maxHealth: 5, health: 5,
+  magazineSize: 16, ammo: 16, reserveAmmo: 1024, // --- Ammo system --- (changed to 1024)
+  stamina: 100, maxStamina: 100,
+  sprinting: false
+};
 let bullets = [];
 let keys = {};
 let controlMode = "buttons"; // default
@@ -39,6 +54,7 @@ let sfxEnabled = true;
 const selectSound = new Audio("src/assets/sound/blipSelect.wav");
 const explosionSound = new Audio("src/assets/sound/explosion.wav");
 const shootSound = new Audio("src/assets/sound/laserShoot.wav");
+const reloadSound = new Audio("../src/assets/sound/reload-gun.mp3"); // --- Reload sound ---
 
 const backgroundMusic = document.getElementById("backgroundMusic");
 backgroundMusic.volume = 0.5;
@@ -82,6 +98,31 @@ function updateHealthBar() {
   else healthBar.style.background = "linear-gradient(90deg, #d32f2f, #ffe066)";
 }
 
+// --- Stamina Bar UI (bottom left) ---
+const staminaBar = document.createElement("div");
+staminaBar.id = "staminaBar";
+staminaBar.style.position = "absolute";
+staminaBar.style.bottom = "60px";
+staminaBar.style.left = "32px";
+staminaBar.style.width = "200px";
+staminaBar.style.height = "20px";
+staminaBar.style.background = "#444";
+staminaBar.style.border = "2px solid #fff";
+staminaBar.style.borderRadius = "8px";
+staminaBar.style.overflow = "hidden";
+staminaBar.style.zIndex = 100;
+document.body.appendChild(staminaBar);
+
+const staminaFill = document.createElement("div");
+staminaFill.style.height = "100%";
+staminaFill.style.background = "linear-gradient(90deg, #80dfff, #4fc3f7)";
+staminaFill.style.width = "100%";
+staminaBar.appendChild(staminaFill);
+
+function updateStaminaBar() {
+  staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
+}
+
 // --- Wave UI ---
 function updateWaveDisplay() {
   waveDisplay.textContent = "Wave: " + (currentWave + 1);
@@ -101,6 +142,7 @@ function startWave(waveIdx) {
   }
   waveSpawning = true;
   waveSpawnTimer = 0;
+  spawnPowerups(); // --- Spawn powerups at start of wave ---
 }
 
 function spawnWaveEnemy() {
@@ -132,8 +174,9 @@ function checkWaveClear() {
 
 // --- Resize Canvas ---
 function resizeCanvas() {
-  canvas.width = window.innerWidth * 0.9;
-  canvas.height = window.innerHeight * 0.8;
+  // Make canvas fill the window, minus a small margin for overlays
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
   player.x = canvas.width / 2 - player.width / 2;
   player.y = canvas.height - player.height - 20;
 }
@@ -183,9 +226,6 @@ async function startGame() {
     }
   }
 
-  document.getElementById("controls").style.display =
-    controlMode === "buttons" ? "flex" : "none";
-
   await loadGameData();
   resetGame();
   gameRunning = true;
@@ -221,22 +261,33 @@ function resetGame() {
   player.x = canvas.width / 2 - player.width / 2;
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
+  player.ammo = player.magazineSize;
+  player.reserveAmmo = 1024;
+  player.stamina = player.maxStamina;
+  player.sprinting = false;
+  updateAmmoDisplay();
+  updateStaminaBar();
   bullets = [];
   resetEnemies();
   score = 0;
   scoreDisplay.textContent = "Score: 0";
   updateHealthBar();
+  updateAmmoDisplay();
   currentWave = 0;
   updateWaveDisplay();
 }
 
 function restartGame() {
+  paused = false;
+  hidePauseOverlay();
   document.getElementById("gameOver").style.display = "none";
   startGame();
   playSelect();
 }
 
 function backToMenu() {
+  paused = false;
+  hidePauseOverlay();
   document.getElementById("gameOver").style.display = "none";
   document.getElementById("menu").style.display = "flex";
   playSelect();
@@ -330,6 +381,7 @@ document.addEventListener("keydown", e => {
   if (e.key === customKeys.right) keys["ArrowRight"] = true;
   if (e.key === customKeys.up) keys["ArrowUp"] = true;
   if (e.key === customKeys.down) keys["ArrowDown"] = true;
+  if (e.key === "Shift") player.sprinting = true;
 });
 
 document.addEventListener("keyup", e => {
@@ -337,6 +389,7 @@ document.addEventListener("keyup", e => {
   if (e.key === customKeys.right) keys["ArrowRight"] = false;
   if (e.key === customKeys.up) keys["ArrowUp"] = false;
   if (e.key === customKeys.down) keys["ArrowDown"] = false;
+  if (e.key === "Shift") player.sprinting = false;
 });
 
 // --- Shooting ---
@@ -346,11 +399,6 @@ canvas.addEventListener("mousedown", e => {
     shootBullet(mouse.x, mouse.y);
   }
 });
-
-document.getElementById("leftBtn").addEventListener("touchstart", () => (keys["ArrowLeft"] = true));
-document.getElementById("leftBtn").addEventListener("touchend", () => (keys["ArrowLeft"] = false));
-document.getElementById("rightBtn").addEventListener("touchstart", () => (keys["ArrowRight"] = true));
-document.getElementById("rightBtn").addEventListener("touchend", () => (keys["ArrowRight"] = false));
 
 // Drag movement
 let dragging = false;
@@ -382,8 +430,32 @@ function updateLastDirection() {
   }
 }
 
+const ammoDisplay = document.createElement("div");
+ammoDisplay.id = "ammoDisplay";
+ammoDisplay.style.position = "absolute";
+ammoDisplay.style.bottom = "16px";
+ammoDisplay.style.right = "32px";
+ammoDisplay.style.fontSize = "28px";
+ammoDisplay.style.color = "#ffe066";
+ammoDisplay.style.fontFamily = "Press Start 2P";
+ammoDisplay.style.textShadow = "2px 2px 4px #222";
+ammoDisplay.style.zIndex = 100;
+document.body.appendChild(ammoDisplay);
+
+function updateAmmoDisplay() {
+  ammoDisplay.textContent = `Ammo: ${player.ammo} / ${player.reserveAmmo}`;
+}
+
+let isReloading = false; // --- Add reload state ---
 function shootBullet(targetX, targetY) {
   if (!gameRunning) return;
+  if (player.ammo <= 0 || isReloading) {
+    // Play empty click sound if desired
+    return;
+  }
+  player.ammo--;
+  updateAmmoDisplay();
+
   let cx = player.x + player.width / 2;
   let cy = player.y + player.height / 2;
   let speed = 7;
@@ -399,17 +471,45 @@ function shootBullet(targetX, targetY) {
     dy = lastDirection.dy * speed;
   }
 
-  bullets.push({ x: cx, y: cy, width: 8, height: 8, dx, dy });
+  // Add damage property to bullet
+  let damage = player.doubleDamage ? 2 : 1;
+  bullets.push({ x: cx, y: cy, width: 8, height: 8, dx, dy, damage });
 
   if (sfxEnabled) {
     shootSound.currentTime = 0;
     shootSound.play();
   }
+
+  // Auto-reload if empty
+  if (player.ammo === 0 && player.reserveAmmo > 0 && !isReloading) {
+    isReloading = true;
+    if (sfxEnabled) {
+      reloadSound.currentTime = 0;
+      reloadSound.play();
+    }
+    setTimeout(() => {
+      reload(player, updateAmmoDisplay);
+      isReloading = false;
+    }, 3000); // 3s reload
+  }
 }
 
-function autoShoot() {
-  if (gameRunning && controlMode === "drag") shootBullet();
-}
+// --- Manual reload key ---
+document.addEventListener("keydown", e => {
+  // ...existing code...
+  if ((e.key === "r" || e.key === "R") && !isReloading && player.ammo < player.magazineSize && player.reserveAmmo > 0) {
+    isReloading = true;
+    if (sfxEnabled) {
+      reloadSound.currentTime = 0;
+      reloadSound.play();
+    }
+    setTimeout(() => {
+      reload(player, updateAmmoDisplay);
+      isReloading = false;
+    }, 3000); // 3s reload
+  }
+  // ...existing code...
+});
 
 // --- End Game ---
 function endGame(victory = false) {
@@ -419,8 +519,6 @@ function endGame(victory = false) {
 
   finalScore.textContent = (victory ? "You Win! " : "Your Score: ") + score;
   document.getElementById("gameOver").style.display = "flex";
-  document.getElementById("controls").style.display = "none";
-
   backgroundMusic.pause();
   backgroundMusic.currentTime = 0;
 }
@@ -449,16 +547,151 @@ function setControl(mode) {
 // Make setControl available globally for HTML onclick
 window.setControl = setControl;
 
+// --- Pause Overlay ---
+let paused = false;
+
+function showPauseOverlay() {
+  // Only show pause overlay if gameRunning is true and overlays are hidden
+  if (!gameRunning) return;
+  // Don't show if menu, settings, or gameOver is visible
+  if (
+    document.getElementById("menu").style.display !== "none" ||
+    document.getElementById("settings").style.display !== "none" ||
+    document.getElementById("gameOver").style.display !== "none"
+  ) {
+    return;
+  }
+  if (!document.getElementById("pauseOverlay")) {
+    const overlay = document.createElement("div");
+    overlay.id = "pauseOverlay";
+    overlay.style.position = "absolute";
+    overlay.style.top = 0;
+    overlay.style.left = 0;
+    overlay.style.right = 0;
+    overlay.style.bottom = 0;
+    overlay.style.background = "rgba(0,0,0,0.7)";
+    overlay.style.zIndex = 500; // Lower than menu/settings/gameOver (2000+)
+    overlay.style.display = "flex";
+    overlay.style.flexDirection = "column";
+    overlay.style.justifyContent = "center";
+    overlay.style.alignItems = "center";
+    overlay.innerHTML = `
+      <h2 style="color:#ffe066;font-size:36px;">Paused</h2>
+      <button id="resumeBtn" style="font-size:22px;padding:10px 26px;margin-top:24px;">Resume</button>
+      <button id="pauseRestartBtn" style="font-size:20px;padding:10px 26px;margin-top:14px;">Restart</button>
+      <button id="pauseMenuBtn" style="font-size:20px;padding:10px 26px;margin-top:14px;">Main Menu</button>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById("resumeBtn").onclick = resumeGame;
+    document.getElementById("pauseRestartBtn").onclick = () => {
+      hidePauseOverlay();
+      restartGame();
+    };
+    document.getElementById("pauseMenuBtn").onclick = () => {
+      hidePauseOverlay();
+      backToMenu();
+    };
+  } else {
+    document.getElementById("pauseOverlay").style.display = "flex";
+  }
+}
+
+function hidePauseOverlay() {
+  const overlay = document.getElementById("pauseOverlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+// --- Pause/Resume Functions ---
+function pauseGame() {
+  if (!gameRunning || paused) return;
+  paused = true;
+  showPauseOverlay();
+  selectSound.currentTime = 0;
+  if (sfxEnabled) selectSound.play();
+  backgroundMusic.pause();
+}
+
+function resumeGame() {
+  if (!paused) return;
+  paused = false;
+  hidePauseOverlay();
+  requestAnimationFrame(gameLoop);
+  selectSound.currentTime = 0;
+  if (sfxEnabled) selectSound.play();
+  if (musicEnabled) {
+    try {
+      backgroundMusic.play();
+    } catch (e) {
+      // Ignore autoplay error
+    }
+  }
+}
+
+// --- Pause Button & Esc Key ---
+document.getElementById("pauseBtn").onclick = pauseGame;
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    if (!paused && gameRunning) pauseGame();
+    else if (paused) resumeGame();
+  }
+  // --- Player Movement Keys ---
+  if (e.key === customKeys.left) keys["ArrowLeft"] = true;
+  if (e.key === customKeys.right) keys["ArrowRight"] = true;
+  if (e.key === customKeys.up) keys["ArrowUp"] = true;
+  if (e.key === customKeys.down) keys["ArrowDown"] = true;
+});
+
+document.addEventListener("keyup", e => {
+  if (e.key === customKeys.left) keys["ArrowLeft"] = false;
+  if (e.key === customKeys.right) keys["ArrowRight"] = false;
+  if (e.key === customKeys.up) keys["ArrowUp"] = false;
+  if (e.key === customKeys.down) keys["ArrowDown"] = false;
+});
+
 // --- Game Loop ---
 function gameLoop() {
   if (!gameRunning) return;
+  if (paused) return;
 
-  // Movement (8 directions)
-  if (keys["ArrowLeft"]) player.x -= player.speed;
-  if (keys["ArrowRight"]) player.x += player.speed;
-  if (keys["ArrowUp"]) player.y -= player.speed;
-  if (keys["ArrowDown"]) player.y += player.speed;
+  // --- Sprint & Stamina logic ---
+  if (player.sprinting && player.stamina > 0) {
+    player.speed = player.sprintSpeed;
+    player.stamina -= 0.5;
+    if (player.stamina < 0) player.stamina = 0;
+  } else {
+    player.speed = player.normalSpeed;
+    // Regen slower if moving
+    let moving = keys["ArrowLeft"] || keys["ArrowRight"] || keys["ArrowUp"] || keys["ArrowDown"];
+    let regen = moving ? 0.15 : 0.25;
+    player.stamina += regen;
+    if (player.stamina > player.maxStamina) player.stamina = player.maxStamina;
+  }
+  // Prevent sprint if stamina is 0
+  if (player.stamina === 0) player.sprinting = false;
+  updateStaminaBar();
 
+  // --- Movement ---
+  let moveX = 0, moveY = 0;
+  if (keys["ArrowLeft"]) moveX -= 1;
+  if (keys["ArrowRight"]) moveX += 1;
+  if (keys["ArrowUp"]) moveY -= 1;
+  if (keys["ArrowDown"]) moveY += 1;
+
+  if (moveX !== 0 || moveY !== 0) {
+    let len = Math.hypot(moveX, moveY);
+    if (len > 0) {
+      moveX = moveX / len;
+      moveY = moveY / len;
+    }
+    let nextX = player.x + moveX * player.speed;
+    let nextY = player.y + moveY * player.speed;
+    if ((moveX < 0 && player.x > 0) || (moveX > 0 && player.x < canvas.width - player.width)) {
+      player.x = Math.max(0, Math.min(canvas.width - player.width, nextX));
+    }
+    if ((moveY < 0 && player.y > 0) || (moveY > 0 && player.y < canvas.height - player.height)) {
+      player.y = Math.max(0, Math.min(canvas.height - player.height, nextY));
+    }
+  }
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
 
@@ -473,8 +706,11 @@ function gameLoop() {
     b => b.x > -20 && b.x < canvas.width + 20 && b.y > -20 && b.y < canvas.height + 20
   );
 
-  // Enemies AI movement & summoner ability
+  // Enemies AI movement & abilities
   updateEnemies(player, canvas, zombiesData);
+
+  // --- Projectiles (from throwers) ---
+  updateProjectiles(canvas);
 
   // --- Wave enemy spawn ---
   if (waveSpawning && gameRunning) {
@@ -491,12 +727,17 @@ function gameLoop() {
     sfxEnabled,
     explosionSound,
     { value: score },
-    scoreDisplay
+    scoreDisplay,
+    zombiesData,
+    canvas
   );
   score = parseInt(scoreDisplay.textContent.replace(/\D/g, "")) || 0;
 
   // Enemy vs player
   if (handlePlayerCollisions(player, updateHealthBar, endGame)) return;
+
+  // Projectile vs player
+  if (handleProjectilePlayerCollision(player, updateHealthBar, endGame)) return;
 
   // Draw
   if (roadBG.complete) ctx.drawImage(roadBG, 0, 0, canvas.width, canvas.height);
@@ -511,17 +752,13 @@ function gameLoop() {
   bullets.forEach(b => ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height));
 
   // Draw enemies with color and health bar
-  enemies.forEach(e => {
-    ctx.fillStyle = e.color || "red";
-    ctx.fillRect(e.x, e.y, e.width, e.height);
-    // Draw enemy health bar
-    if (e.maxHealth > 1) {
-      ctx.fillStyle = "#222";
-      ctx.fillRect(e.x, e.y - 8, e.width, 6);
-      ctx.fillStyle = "#ffe066";
-      ctx.fillRect(e.x, e.y - 8, e.width * (e.health / e.maxHealth), 6);
-    }
-  });
+  drawEnemies(ctx);
+
+  // Draw enemy projectiles (rectangles)
+  drawProjectiles(ctx);
+
+  // --- Draw and handle powerups ---
+  drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, selectSound);
 
   // Check wave clear
   checkWaveClear();
@@ -539,16 +776,9 @@ window.addEventListener("DOMContentLoaded", () => {
   setControl(controlMode);
   updateHealthBar();
   updateWaveDisplay();
+  updateAmmoDisplay();
+  updateStaminaBar();
 });
-      ctx.fillStyle = "#ffe066";
-      ctx.fillRect(e.x, e.y - 8, e.width * (e.health / e.maxHealth), 6);
-
-  // Check wave clear
-  checkWaveClear();
-
-  requestAnimationFrame(gameLoop);
-
-// --- Spawn Enemies ---
 // (No longer used, handled by wave system)
 // function spawnEnemy() { ... }
 
@@ -558,4 +788,18 @@ window.addEventListener("DOMContentLoaded", () => {
   setControl(controlMode);
   updateHealthBar();
   updateWaveDisplay();
+  updateAmmoDisplay();
+  updateStaminaBar();
+});
+// (No longer used, handled by wave system)
+// function spawnEnemy() { ... }
+
+// --- Init ---
+window.addEventListener("DOMContentLoaded", () => {
+  setupCustomKeyInputs();
+  setControl(controlMode);
+  updateHealthBar();
+  updateWaveDisplay();
+  updateAmmoDisplay();
+  updateStaminaBar();
 });

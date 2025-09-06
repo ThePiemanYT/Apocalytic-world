@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Cube Shooter Prototype</title>
+  <title>Cube Shooter</title>
   <link rel="stylesheet" href="src/styles/index.css">
   <link rel="icon" href="src/assets/image/favicon.ico" type="image/x-icon">
 
@@ -41,7 +41,7 @@
     <div id="controlSection">
       <h3>Controls</h3>
       <div id="controlToggles">
-        <button id="buttonModeBtn" onclick="setControl('buttons')">Button Controls</button>
+        <button id="buttonModeBtn" onclick="setControl('buttons')">Keyboard Controls</button>
         <button id="dragModeBtn" onclick="setControl('drag')">Drag Controls</button>
       </div>
       <div id="customKeys">
@@ -74,10 +74,7 @@
     <button onclick="backToMenu()">Main Menu</button>
   </div>
 
-  <div id="controls" style="display:none;">
-    <button id="leftBtn">◀</button>
-    <button id="rightBtn">▶</button>
-  </div>
+  <button id="pauseBtn" style="position:absolute;top:18px;right:32px;font-size:22px;padding:10px 26px;">Pause</button>
 
   <audio id="backgroundMusic" loop>
     <source src="src/assets/music/Apocalypse - SYBS.mp3" type="audio/mpeg">
