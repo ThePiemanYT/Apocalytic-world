@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cube Shooter Prototype</title>
+  <link rel="stylesheet" href="src/styles/index.css">
+  <link rel="icon" href="src/assets/image/favicon.ico" type="image/x-icon">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="score">Score: 0</div>
+  <div id="healthBarContainer">
+    <div id="healthBar"></div>
+  </div>
+  <div id="waveDisplay">Wave: 1</div>
+
+  <div id="menu">
+    <h1>Cube Shooter</h1>
+    <button onclick="startGame()">Start</button>
+    <button onclick="openSettings()">Settings</button>
+    <button onclick="quitGame()">Quit</button>
+  </div>
+
+  <div id="settings" style="display:none;">
+    <h2>Settings</h2>
+    <div id="audioSection">
+      <h3>Audio</h3>
+      <div id="audioToggles">
+        <label>
+          <input type="checkbox" id="musicToggle" checked> Music
+        </label>
+        <label>
+          <input type="checkbox" id="sfxToggle" checked> SFX
+        </label>
+      </div>
+    </div>
+    <div id="controlSection">
+      <h3>Controls</h3>
+      <div id="controlToggles">
+        <button id="buttonModeBtn" onclick="setControl('buttons')">Button Controls</button>
+        <button id="dragModeBtn" onclick="setControl('drag')">Drag Controls</button>
+      </div>
+      <div id="customKeys">
+        <label>
+          Left:
+          <input type="text" id="leftKeyInput" maxlength="1" readonly>
+        </label>
+        <label>
+          Right:
+          <input type="text" id="rightKeyInput" maxlength="1" readonly>
+        </label>
+        <label>
+          Up:
+          <input type="text" id="upKeyInput" maxlength="1" readonly>
+        </label>
+        <label>
+          Down:
+          <input type="text" id="downKeyInput" maxlength="1" readonly>
+        </label>
+        <button id="resetKeysBtn" type="button">Reset Keys</button>
+      </div>
+    </div>
+    <button onclick="closeSettings()">Back</button>
+  </div>
+
+  <div id="gameOver">
+    <h2>Game Over</h2>
+    <p id="finalScore"></p>
+    <button onclick="restartGame()">Restart</button>
+    <button onclick="backToMenu()">Main Menu</button>
+  </div>
+
+  <div id="controls" style="display:none;">
+    <button id="leftBtn">◀</button>
+    <button id="rightBtn">▶</button>
+  </div>
+
+  <audio id="backgroundMusic" loop>
+    <source src="src/assets/music/Apocalypse - SYBS.mp3" type="audio/mpeg">
+
+  <!-- Use type="module" for ES module support -->
+  <script type="module" src="src/scripts/index.js"></script>
+</body>
+</html>

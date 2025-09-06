@@ -1,0 +1,27 @@
+{
+  "basic": {
+    "speed": 2,
+    "health": 2,
+    "color": "red"
+  },
+  "fast": {
+    "speed": 4.5,
+    "health": 1,
+    "color": "orange"
+  },
+  "tank": {
+    "speed": 1,
+    "health": 3,
+    "color": "purple"
+  },
+  "summoner": {
+    "speed": 1.5,
+    "health": 5,
+    "color": "blue"
+  },
+  "minion": {
+    "speed": 3,
+    "health": 1,
+    "color": "gray"
+  }
+}

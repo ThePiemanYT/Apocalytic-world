@@ -1,0 +1,31 @@
+[
+  {
+    "wave": 1,
+    "zombies": [
+      { "type": "basic", "count": 10 }
+    ]
+  },
+  {
+    "wave": 2,
+    "zombies": [
+      { "type": "basic", "count": 8 },
+      { "type": "fast", "count": 7 }
+    ]
+  },
+  { "wave": 3,
+    "zombies": [
+      { "type": "basic", "count": 5 },
+      { "type": "fast", "count": 5 },
+      { "type": "tank", "count": 8 }
+    ]
+  },
+  {
+    "wave": 4,
+    "zombies": [
+      { "type": "basic", "count": 4 },
+      { "type": "fast", "count": 4 },
+      { "type": "tank", "count": 6 },
+      { "type": "summoner", "count": 2 }
+    ]
+  }
+]
