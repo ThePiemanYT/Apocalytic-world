@@ -1,6 +1,6 @@
 body {
       margin: 0;
-      background: #111;
+      background: rgba(17, 17, 17, 0.85); /* Adjusted transparency */
       color: white;
       font-family: "Press Start 2P", Arial, sans-serif;
       overflow: hidden;

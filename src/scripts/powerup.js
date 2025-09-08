@@ -54,7 +54,7 @@ export function spawnPowerups() {
 }
 
 // Call this from your game loop (after drawing everything else)
-export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, selectSound, updateHealthBar) {
+export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, selectSound, updateHealthBar, camera = { x: 0, y: 0 }) {
   for (let i = powerups.length - 1; i >= 0; i--) {
     let p = powerups[i];
     if (
@@ -76,7 +76,7 @@ export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled
   }
   powerups.forEach(p => {
     ctx.fillStyle = p.type.color;
-    ctx.fillRect(p.x, p.y, p.width, p.height);
+    ctx.fillRect(p.x - camera.x, p.y - camera.y, p.width, p.height);
   });
 }
 

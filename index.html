@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Cube Shooter</title>
   <link rel="stylesheet" href="src/styles/index.css">
+  <link rel="icon" href="src/assets/image/favicon.ico" type="image/x-icon">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,22 +27,25 @@
 
   <div id="settings" style="display:none;">
     <h2>Settings</h2>
-    <div id="audioSection">
-      <h3>Audio</h3>
-      <div id="audioToggles">
-        <label>
-          <input type="checkbox" id="musicToggle" checked> Music
-        </label>
-        <label>
-          <input type="checkbox" id="sfxToggle" checked> SFX
-        </label>
+    <button onclick="openAudio()" id="audioSetting">Audio</button>
+      <div id="audioSection" style="display:none;">
+        <h3>Audio</h3>
+        <div id="audioToggles">
+          <label>
+            <input type="checkbox" id="musicToggle" checked> Music
+          </label>
+          <label>
+            <input type="checkbox" id="sfxToggle" checked> SFX
+          </label>
+        </div>
+        <button onclick="backAudio()" id="backAudio">Back</button>
       </div>
-    </div>
-    <div id="controlSection">
+    <button onclick="openControl()" id="controlSetting">Controls</button>
+    <div id="controlSection" style="display:none;">
       <h3>Controls</h3>
       <div id="controlToggles">
         <button id="buttonModeBtn" onclick="setControl('buttons')">Keyboard Controls</button>
-        <button id="dragModeBtn" onclick="setControl('drag')">Drag Controls</button>
+        <button id="joystickModeBtn" onclick="setControl('joystick')">Joystick Controls</button>
       </div>
       <div id="customKeys">
         <label>
@@ -62,8 +66,12 @@
         </label>
         <button id="resetKeysBtn" type="button">Reset Keys</button>
       </div>
+      <button onclick="toggleFullscreen()" id="fullscreenBtn">Toggle Fullscreen</button>
+      <button onclick="backAudio()" id="backAudio">Back</button>
     </div>
-    <button onclick="closeSettings()">Back</button>
+    <button id="howToPlay">How To Play(Not Working)</button>
+
+    <button onclick="closeSettings()" id="close-setting">Back</button>
   </div>
 
   <div id="gameOver">
@@ -81,5 +89,4 @@
   <!-- Use type="module" for ES module support -->
   <script type="module" src="src/scripts/index.js"></script>
 </body>
-
 </html>

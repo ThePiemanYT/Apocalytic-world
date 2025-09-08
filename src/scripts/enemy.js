@@ -99,24 +99,39 @@ export function updateProjectiles(canvas) {
   }
 }
 
-export function drawEnemies(ctx) {
+export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1) {
   for (let e of enemies) {
     ctx.fillStyle = e.color || "red";
-    ctx.fillRect(e.x, e.y, e.width, e.height);
+    ctx.fillRect(
+      e.x - camera.x,
+      e.y - camera.y,
+      e.width * scale,
+      e.height * scale
+    );
     // Draw enemy health bar
     if (e.maxHealth > 1) {
       ctx.fillStyle = "#222";
-      ctx.fillRect(e.x, e.y - 8, e.width, 6);
+      ctx.fillRect(
+        e.x - camera.x,
+        e.y - camera.y - 8,
+        e.width * scale,
+        6
+      );
       ctx.fillStyle = "#ffe066";
-      ctx.fillRect(e.x, e.y - 8, e.width * (e.health / e.maxHealth), 6);
+      ctx.fillRect(
+        e.x - camera.x,
+        e.y - camera.y - 8,
+        (e.width * scale) * (e.health / e.maxHealth),
+        6
+      );
     }
   }
 }
 
-export function drawProjectiles(ctx) {
+export function drawProjectiles(ctx, camera = { x: 0, y: 0 }) {
   for (let p of projectiles) {
     ctx.fillStyle = p.color || "#a0522d";
-    ctx.fillRect(p.x, p.y, p.width, p.height);
+    ctx.fillRect(p.x - camera.x, p.y - camera.y, p.width, p.height);
   }
 }
 

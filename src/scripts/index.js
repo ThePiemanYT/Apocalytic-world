@@ -23,12 +23,12 @@ const waveDisplay = document.getElementById("waveDisplay");
 
 // --- Player & Game State ---
 let player = {
-  x: 0, y: 0, width: 40, height: 40,
+  x: 0, y: 0, width: 24, height: 24,
   speed: 6,
   normalSpeed: 6,
   sprintSpeed: 10,
-  maxHealth: 5, health: 5,
-  magazineSize: 16, ammo: 16, reserveAmmo: 1024, // --- Ammo system --- (changed to 1024)
+  maxHealth: 10, health: 10,
+  magazineSize: 16, ammo: 16, reserveAmmo: 1024,
   stamina: 100, maxStamina: 100,
   sprinting: false
 };
@@ -172,13 +172,132 @@ function checkWaveClear() {
   }
 }
 
+// --- Pixel-art rendering for canvas ---
+canvas.style.imageRendering = "pixelated";
+
+// --- Map & Camera ---
+let mapData = null;
+let tilesets = [];
+let tilesetImages = [];
+let mapWidth = 0, mapHeight = 0, tileWidth = 32, tileHeight = 32;
+let camera = { x: 0, y: 0 };
+let zoom = 1.5; // Change this for desired zoom (e.g. 2 for double size)
+
+// --- Load Map JSON & Tileset PNGs ---
+async function loadMap() {
+  const res = await fetch("src/assets/texture/map.json");
+  mapData = await res.json();
+  tileWidth = mapData.tilewidth;
+  tileHeight = mapData.tileheight;
+  mapWidth = mapData.width * tileWidth;
+  mapHeight = mapData.height * tileHeight;
+
+  tilesets = mapData.tilesets;
+  tilesetImages = await Promise.all(
+    tilesets.map(ts => {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.src = ts.image;
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+      });
+    })
+  );
+}
+window.addEventListener("DOMContentLoaded", loadMap);
+
+// --- Find tileset for a tile index ---
+function getTilesetForGid(gid) {
+  let result = null;
+  for (let i = tilesets.length - 1; i >= 0; i--) {
+    if (gid >= tilesets[i].firstgid) {
+      result = { tileset: tilesets[i], image: tilesetImages[i], index: i };
+      break;
+    }
+  }
+  return result;
+}
+
+// --- Camera ---
+function updateCamera() {
+  // Center camera on player, pixel-perfect, with zoom
+  camera.x = Math.round(player.x + player.width / 2 - canvas.width / (2 * zoom));
+  camera.y = Math.round(player.y + player.height / 2 - canvas.height / (2 * zoom));
+  camera.x = Math.max(0, Math.min(camera.x, mapWidth - canvas.width / zoom));
+  camera.y = Math.max(0, Math.min(camera.y, mapHeight - canvas.height / zoom));
+}
+
+// --- Draw Map (multi-tileset support, pixel-art, with zoom) ---
+function drawMap(ctx, skipLayerName = null) {
+  if (!mapData || tilesetImages.length === 0) return;
+  ctx.save();
+  ctx.scale(zoom, zoom);
+  for (const layer of mapData.layers) {
+    if (layer.type !== "tilelayer" || !layer.visible) continue;
+    if (layer.name === skipLayerName) continue; // skip plant layer if requested
+    for (let y = 0; y < layer.height; y++) {
+      for (let x = 0; x < layer.width; x++) {
+        const tileId = layer.data[y * layer.width + x];
+        if (tileId <= 0) continue;
+        const tsInfo = getTilesetForGid(tileId);
+        if (!tsInfo || !tsInfo.image) continue;
+        const { tileset, image } = tsInfo;
+        const localId = tileId - tileset.firstgid;
+        const tilesetCols = Math.floor(image.width / tileWidth);
+        const sx = (localId % tilesetCols) * tileWidth;
+        const sy = Math.floor(localId / tilesetCols) * tileHeight;
+        ctx.drawImage(
+          image,
+          sx, sy, tileWidth, tileHeight,
+          Math.round(x * tileWidth - camera.x),
+          Math.round(y * tileHeight - camera.y),
+          tileWidth, tileHeight
+        );
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// --- Draw only the plant layer ---
+function drawPlantLayer(ctx) {
+  if (!mapData || tilesetImages.length === 0) return;
+  ctx.save();
+  ctx.scale(zoom, zoom);
+  for (const layer of mapData.layers) {
+    if (layer.type !== "tilelayer" || !layer.visible) continue;
+    if (layer.name !== "plant") continue;
+    for (let y = 0; y < layer.height; y++) {
+      for (let x = 0; x < layer.width; x++) {
+        const tileId = layer.data[y * layer.width + x];
+        if (tileId <= 0) continue;
+        const tsInfo = getTilesetForGid(tileId);
+        if (!tsInfo || !tsInfo.image) continue;
+        const { tileset, image } = tsInfo;
+        const localId = tileId - tileset.firstgid;
+        const tilesetCols = Math.floor(image.width / tileWidth);
+        const sx = (localId % tilesetCols) * tileWidth;
+        const sy = Math.floor(localId / tilesetCols) * tileHeight;
+        ctx.drawImage(
+          image,
+          sx, sy, tileWidth, tileHeight,
+          Math.round(x * tileWidth - camera.x),
+          Math.round(y * tileHeight - camera.y),
+          tileWidth, tileHeight
+        );
+      }
+    }
+  }
+  ctx.restore();
+}
+
 // --- Resize Canvas ---
 function resizeCanvas() {
-  // Make canvas fill the window, minus a small margin for overlays
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
-  player.x = canvas.width / 2 - player.width / 2;
-  player.y = canvas.height - player.height - 20;
+  // Clamp player to map bounds
+  player.x = Math.max(0, Math.min(mapWidth - player.width, player.x));
+  player.y = Math.max(0, Math.min(mapHeight - player.height, player.y));
 }
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
@@ -212,6 +331,7 @@ function playSelect() {
 
 // --- Menu Functions ---
 async function startGame() {
+  hideMenuBackground(); // Hide menu background when game starts
   document.getElementById("menu").style.display = "none";
   document.getElementById("settings").style.display = "none";
   document.getElementById("gameOver").style.display = "none";
@@ -220,13 +340,13 @@ async function startGame() {
   if (musicEnabled) {
     backgroundMusic.currentTime = 0;
     try {
-      await backgroundMusic.play();
+      backgroundMusic.play();
     } catch (e) {
       // Ignore autoplay error, will play after next user interaction
     }
   }
 
-  await loadGameData();
+  loadGameData();
   resetGame();
   gameRunning = true;
   updateHealthBar();
@@ -247,22 +367,54 @@ function openSettings() {
   playSelect();
 }
 
+function openAudio() {
+  document.getElementById("audioSection").style.display = "flex";
+  document.getElementById("controlSetting").style.display = "none";
+  document.getElementById("audioSetting").style.display = "none";
+  document.getElementById("close-setting").style.display = "none";
+  document.getElementById("howToPlay").style.display = "none";
+  playSelect();
+}
+
+function backAudio () {
+  document.getElementById("audioSection").style.display = "none";
+  document.getElementById("controlSetting").style.display = "flex";
+  document.getElementById("audioSetting").style.display = "flex";
+  document.getElementById("close-setting").style.display = "flex";
+  document.getElementById("controlSection").style.display = "none";
+  document.getElementById("howToPlay").style.display = "flex";
+  playSelect();
+}
+
+function openControl() {
+  document.getElementById("controlSection").style.display = "flex";
+  document.getElementById("audioSetting").style.display = "none";
+  document.getElementById("controlSetting").style.display = "none";
+  document.getElementById("close-setting").style.display = "none";
+  document.getElementById("howToPlay").style.display = "none";
+  playSelect();
+
+}
+
 function closeSettings() {
   document.getElementById("settings").style.display = "none";
   document.getElementById("menu").style.display = "flex";
+  document.getElementById("howToPlay").style.display = "flex";
   playSelect();
 }
 
 function quitGame() {
-  alert("Quit Game (close browser tab manually)");
+  playSelect();
+  window.close();
 }
 
+// Ensure the wave starts from 0 when the game begins
 function resetGame() {
   player.x = canvas.width / 2 - player.width / 2;
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
   player.ammo = player.magazineSize;
-  player.reserveAmmo = 1024;
+  player.reserveAmmo = 1500;
   player.stamina = player.maxStamina;
   player.sprinting = false;
   updateAmmoDisplay();
@@ -273,7 +425,7 @@ function resetGame() {
   scoreDisplay.textContent = "Score: 0";
   updateHealthBar();
   updateAmmoDisplay();
-  currentWave = 0;
+  currentWave = -1; // Set to -1 so the first wave starts as 0
   updateWaveDisplay();
 }
 
@@ -290,12 +442,16 @@ function backToMenu() {
   hidePauseOverlay();
   document.getElementById("gameOver").style.display = "none";
   document.getElementById("menu").style.display = "flex";
+  showMenuBackground(); // Show menu background when returning to menu
   playSelect();
 }
 
 // Make functions available to HTML
 window.startGame = startGame;
 window.openSettings = openSettings;
+window.openAudio = openAudio;
+window.backAudio = backAudio;
+window.openControl = openControl;
 window.closeSettings = closeSettings;
 window.quitGame = quitGame;
 window.restartGame = restartGame;
@@ -362,7 +518,7 @@ window.addEventListener("DOMContentLoaded", setupCustomKeyInputs);
 
 // --- Detect Mobile or PC ---
 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-controlMode = isMobile ? "drag" : "buttons";
+controlMode = isMobile ? "joystick" : "buttons";
 
 // --- Mouse Tracking (PC) ---
 let mouse = { x: 0, y: 0 };
@@ -400,98 +556,116 @@ canvas.addEventListener("mousedown", e => {
   }
 });
 
-// Drag movement
-let dragging = false;
-canvas.addEventListener("touchstart", () => {
-  if (controlMode === "drag") dragging = true;
-});
-canvas.addEventListener("touchend", () => {
-  if (controlMode === "drag") dragging = false;
-});
-canvas.addEventListener("touchmove", e => {
-  if (controlMode === "drag" && dragging) {
-    let rect = canvas.getBoundingClientRect();
-    player.x = e.touches[0].clientX - rect.left - player.width / 2;
-    player.y = e.touches[0].clientY - rect.top - player.height / 2;
-  }
-});
+// Show joystick only on mobile devices
+if (isMobile) {
+  const joystickContainer = document.createElement("div");
+  joystickContainer.id = "joystickContainer";
+  joystickContainer.style.position = "absolute";
+  joystickContainer.style.bottom = "20px";
+  joystickContainer.style.left = "20px";
+  joystickContainer.style.width = "150px";
+  joystickContainer.style.height = "150px";
+  joystickContainer.style.background = "rgba(255, 255, 255, 0.1)";
+  joystickContainer.style.borderRadius = "50%";
+  joystickContainer.style.zIndex = "100";
+  document.body.appendChild(joystickContainer);
 
-function updateLastDirection() {
-  let dx = 0,
-    dy = 0;
-  if (keys["ArrowLeft"]) dx -= 1;
-  if (keys["ArrowRight"]) dx += 1;
-  if (keys["ArrowUp"]) dy -= 1;
-  if (keys["ArrowDown"]) dy += 1;
-  if (dx || dy) {
-    let len = Math.hypot(dx, dy);
-    lastDirection.dx = dx / len;
-    lastDirection.dy = dy / len;
-  }
-}
+  const joystick = document.createElement("div");
+  joystick.id = "joystick";
+  joystick.style.position = "absolute";
+  joystick.style.width = "60px";
+  joystick.style.height = "60px";
+  joystick.style.background = "rgba(255, 255, 255, 0.8)";
+  joystick.style.borderRadius = "50%";
+  joystick.style.left = "50%";
+  joystick.style.top = "50%";
+  joystick.style.transform = "translate(-50%, -50%)";
+  joystickContainer.appendChild(joystick);
 
-const ammoDisplay = document.createElement("div");
-ammoDisplay.id = "ammoDisplay";
-ammoDisplay.style.position = "absolute";
-ammoDisplay.style.bottom = "16px";
-ammoDisplay.style.right = "32px";
-ammoDisplay.style.fontSize = "28px";
-ammoDisplay.style.color = "#ffe066";
-ammoDisplay.style.fontFamily = "Press Start 2P";
-ammoDisplay.style.textShadow = "2px 2px 4px #222";
-ammoDisplay.style.zIndex = 100;
-document.body.appendChild(ammoDisplay);
+  const shootJoystickContainer = document.createElement("div");
+  shootJoystickContainer.id = "shootJoystickContainer";
+  shootJoystickContainer.style.position = "absolute";
+  shootJoystickContainer.style.bottom = "20px";
+  shootJoystickContainer.style.right = "20px";
+  shootJoystickContainer.style.width = "150px";
+  shootJoystickContainer.style.height = "150px";
+  shootJoystickContainer.style.background = "rgba(255, 255, 255, 0.1)";
+  shootJoystickContainer.style.borderRadius = "50%";
+  shootJoystickContainer.style.zIndex = "100";
+  document.body.appendChild(shootJoystickContainer);
 
-function updateAmmoDisplay() {
-  ammoDisplay.textContent = `Ammo: ${player.ammo} / ${player.reserveAmmo}`;
-}
+  const shootJoystick = document.createElement("div");
+  shootJoystick.id = "shootJoystick";
+  shootJoystick.style.position = "absolute";
+  shootJoystick.style.width = "60px";
+  shootJoystick.style.height = "60px";
+  shootJoystick.style.background = "rgba(255, 255, 255, 0.8)";
+  shootJoystick.style.borderRadius = "50%";
+  shootJoystick.style.left = "50%";
+  shootJoystick.style.top = "50%";
+  shootJoystick.style.transform = "translate(-50%, -50%)";
+  shootJoystickContainer.appendChild(shootJoystick);
 
-let isReloading = false; // --- Add reload state ---
-function shootBullet(targetX, targetY) {
-  if (!gameRunning) return;
-  if (player.ammo <= 0 || isReloading) {
-    // Play empty click sound if desired
-    return;
-  }
-  player.ammo--;
-  updateAmmoDisplay();
+  let joystickActive = false;
+  let shootJoystickActive = false;
+  let joystickStartX, joystickStartY;
+  let shootJoystickStartX, shootJoystickStartY;
 
-  let cx = player.x + player.width / 2;
-  let cy = player.y + player.height / 2;
-  let speed = 7;
-  let dx, dy;
+  joystickContainer.addEventListener("touchstart", (e) => {
+    joystickActive = true;
+    joystickStartX = e.touches[0].clientX;
+    joystickStartY = e.touches[0].clientY;
+  });
 
-  // Always shoot toward mouse if coordinates provided
-  if (typeof targetX === "number" && typeof targetY === "number") {
-    let angle = Math.atan2(targetY - cy, targetX - cx);
-    dx = Math.cos(angle) * speed;
-    dy = Math.sin(angle) * speed;
-  } else {
-    dx = lastDirection.dx * speed;
-    dy = lastDirection.dy * speed;
-  }
+  joystickContainer.addEventListener("touchmove", (e) => {
+    if (!joystickActive) return;
+    const dx = e.touches[0].clientX - joystickStartX;
+    const dy = e.touches[0].clientY - joystickStartY;
+    const distance = Math.min(Math.hypot(dx, dy), 50);
+    const angle = Math.atan2(dy, dx);
 
-  // Add damage property to bullet
-  let damage = player.doubleDamage ? 2 : 1;
-  bullets.push({ x: cx, y: cy, width: 8, height: 8, dx, dy, damage });
+    joystick.style.left = `${50 + Math.cos(angle) * distance}%`;
+    joystick.style.top = `${50 + Math.sin(angle) * distance}%`;
 
-  if (sfxEnabled) {
-    shootSound.currentTime = 0;
-    shootSound.play();
-  }
+    player.x += Math.cos(angle) * player.speed;
+    player.y += Math.sin(angle) * player.speed;
 
-  // Auto-reload if empty
-  if (player.ammo === 0 && player.reserveAmmo > 0 && !isReloading) {
-    isReloading = true;
-    if (sfxEnabled) {
-      reloadSound.currentTime = 0;
-      reloadSound.play();
-    }
-    setTimeout(() => {
-      reload(player, updateAmmoDisplay);
-      isReloading = false;
-    }, 3000); // 3s reload
-  }
+    player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+    player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+  });
+
+  joystickContainer.addEventListener("touchend", () => {
+    joystickActive = false;
+    joystick.style.left = "50%";
+    joystick.style.top = "50%";
+  });
+
+  shootJoystickContainer.addEventListener("touchstart", (e) => {
+    shootJoystickActive = true;
+    shootJoystickStartX = e.touches[0].clientX;
+    shootJoystickStartY = e.touches[0].clientY;
+  });
+
+  shootJoystickContainer.addEventListener("touchmove", (e) => {
+    if (!shootJoystickActive) return;
+    const dx = e.touches[0].clientX - shootJoystickStartX;
+    const dy = e.touches[0].clientY - shootJoystickStartY;
+    const distance = Math.min(Math.hypot(dx, dy), 50);
+    const angle = Math.atan2(dy, dx);
+
+    shootJoystick.style.left = `${50 + Math.cos(angle) * distance}%`;
+    shootJoystick.style.top = `${50 + Math.sin(angle) * distance}%`;
+
+    const targetX = player.x + player.width / 2 + Math.cos(angle) * 100;
+    const targetY = player.y + player.height / 2 + Math.sin(angle) * 100;
+    shootBullet(targetX, targetY);
+  });
+
+  shootJoystickContainer.addEventListener("touchend", () => {
+    shootJoystickActive = false;
+    shootJoystick.style.left = "50%";
+    shootJoystick.style.top = "50%";
+  });
 }
 
 // --- Manual reload key ---
@@ -511,6 +685,79 @@ document.addEventListener("keydown", e => {
   // ...existing code...
 });
 
+// Define isReloading variable
+let isReloading = false;
+
+// --- Ensure ammo display is created and rendered
+const ammoDisplay = document.createElement("div");
+ammoDisplay.id = "ammoDisplay";
+ammoDisplay.style.position = "absolute";
+ammoDisplay.style.bottom = "16px";
+ammoDisplay.style.right = "32px";
+ammoDisplay.style.fontSize = "20px";
+ammoDisplay.style.color = "#ffe066";
+ammoDisplay.style.fontFamily = "Press Start 2P";
+ammoDisplay.style.textShadow = "2px 2px 4px #222";
+ammoDisplay.style.zIndex = "100";
+document.body.appendChild(ammoDisplay);
+
+// --- Update bullet positions and remove off-screen bullets ---
+function updateBullets() {
+  bullets = bullets.filter(bullet => {
+    bullet.x += bullet.dx;
+    bullet.y += bullet.dy;
+
+    // Check if bullet is within canvas bounds
+    const onScreen =
+      bullet.x + bullet.width > 0 &&
+      bullet.x < canvas.width &&
+      bullet.y + bullet.height > 0 &&
+      bullet.y < canvas.height;
+
+    return onScreen;
+  });
+}
+
+// --- Define updateAmmoDisplay function
+function updateAmmoDisplay() {
+  const ammoDisplay = document.getElementById("ammoDisplay");
+  if (ammoDisplay) {
+    ammoDisplay.textContent = `Ammo: ${player.ammo} / ${player.reserveAmmo}`;
+  }
+}
+
+// Refine bullet accuracy to ensure it aligns perfectly with the mouse
+function shootBullet(targetX, targetY) {
+  if (!gameRunning || player.ammo <= 0) return;
+
+  player.ammo--;
+  updateAmmoDisplay();
+
+  // Adjust for canvas offset and scaling
+  const rect = canvas.getBoundingClientRect();
+  const adjustedTargetX = targetX - rect.left;
+  const adjustedTargetY = targetY - rect.top;
+
+  const cx = player.x + player.width / 2;
+  const cy = player.y + player.height / 2;
+  const angle = Math.atan2(adjustedTargetY - cy, adjustedTargetX - cx);
+  const speed = 10;
+
+  bullets.push({
+    x: cx,
+    y: cy,
+    dx: Math.cos(angle) * speed,
+    dy: Math.sin(angle) * speed,
+    width: 8,
+    height: 8,
+  });
+
+  if (sfxEnabled) {
+    shootSound.currentTime = 0;
+    shootSound.play();
+  }
+}
+
 // --- End Game ---
 function endGame(victory = false) {
   gameRunning = false;
@@ -528,16 +775,16 @@ function setControl(mode) {
   controlMode = mode;
   // Highlight selected mode button
   const buttonBtn = document.getElementById("buttonModeBtn");
-  const dragBtn = document.getElementById("dragModeBtn");
-  if (buttonBtn && dragBtn) {
+  const joystickBtn = document.getElementById("joystickModeBtn");
+  if (buttonBtn && joystickBtn) {
     if (mode === "buttons") {
       buttonBtn.classList.add("selected-mode");
       buttonBtn.classList.remove("unselected-mode");
-      dragBtn.classList.remove("selected-mode");
-      dragBtn.classList.add("unselected-mode");
+      joystickBtn.classList.remove("selected-mode");
+      joystickBtn.classList.add("unselected-mode");
     } else {
-      dragBtn.classList.add("selected-mode");
-      dragBtn.classList.remove("unselected-mode");
+      joystickBtn.classList.add("selected-mode");
+      joystickBtn.classList.remove("unselected-mode");
       buttonBtn.classList.remove("selected-mode");
       buttonBtn.classList.add("unselected-mode");
     }
@@ -648,6 +895,72 @@ document.addEventListener("keyup", e => {
   if (e.key === customKeys.down) keys["ArrowDown"] = false;
 });
 
+// --- Player movement logic ---
+function updatePlayerMovement() {
+  let moveX = 0, moveY = 0;
+
+  if (keys["ArrowLeft"]) {
+    moveX -= 1;
+    console.log("Moving left");
+  }
+  if (keys["ArrowRight"]) {
+    moveX += 1;
+    console.log("Moving right");
+  }
+  if (keys["ArrowUp"]) {
+    moveY -= 1;
+    console.log("Moving up");
+  }
+  if (keys["ArrowDown"]) {
+    moveY += 1;
+    console.log("Moving down");
+  }
+
+  if (moveX !== 0 || moveY !== 0) {
+    const len = Math.hypot(moveX, moveY);
+    moveX /= len;
+    moveY /= len;
+
+    player.x += moveX * player.speed;
+    player.y += moveY * player.speed;
+
+    console.log(`Player position: (${player.x}, ${player.y})`);
+  }
+
+  // Clamp player position to canvas bounds
+  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+}
+
+// --- Define updateLastDirection function
+function updateLastDirection() {
+  let dx = 0, dy = 0;
+  if (keys["ArrowLeft"]) dx -= 1;
+  if (keys["ArrowRight"]) dx += 1;
+  if (keys["ArrowUp"]) dy -= 1;
+  if (keys["ArrowDown"]) dy += 1;
+  if (dx || dy) {
+    const len = Math.hypot(dx, dy);
+    lastDirection.dx = dx / len;
+    lastDirection.dy = dy / len;
+  }
+}
+
+// --- Add auto-reloading functionality
+function autoReload() {
+  if (!isReloading && player.ammo === 0 && player.reserveAmmo > 0) {
+    isReloading = true;
+    if (sfxEnabled) {
+      reloadSound.currentTime = 0;
+      reloadSound.play();
+    }
+    setTimeout(() => {
+      reload(player, updateAmmoDisplay);
+      isReloading = false;
+    }, 3000); // 3s reload
+  }
+}
+
 // --- Game Loop ---
 function gameLoop() {
   if (!gameRunning) return;
@@ -670,43 +983,12 @@ function gameLoop() {
   if (player.stamina === 0) player.sprinting = false;
   updateStaminaBar();
 
-  // --- Movement ---
-  let moveX = 0, moveY = 0;
-  if (keys["ArrowLeft"]) moveX -= 1;
-  if (keys["ArrowRight"]) moveX += 1;
-  if (keys["ArrowUp"]) moveY -= 1;
-  if (keys["ArrowDown"]) moveY += 1;
+  updatePlayerMovement(); // Call movement logic
+  updateBullets(); // Update bullet positions
+  updateCamera(); // Update camera position
+  updateLastDirection(); // Update last movement direction
 
-  if (moveX !== 0 || moveY !== 0) {
-    let len = Math.hypot(moveX, moveY);
-    if (len > 0) {
-      moveX = moveX / len;
-      moveY = moveY / len;
-    }
-    let nextX = player.x + moveX * player.speed;
-    let nextY = player.y + moveY * player.speed;
-    if ((moveX < 0 && player.x > 0) || (moveX > 0 && player.x < canvas.width - player.width)) {
-      player.x = Math.max(0, Math.min(canvas.width - player.width, nextX));
-    }
-    if ((moveY < 0 && player.y > 0) || (moveY > 0 && player.y < canvas.height - player.height)) {
-      player.y = Math.max(0, Math.min(canvas.height - player.height, nextY));
-    }
-  }
-  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
-
-  updateLastDirection();
-
-  // Bullets
-  bullets.forEach(b => {
-    b.x += b.dx;
-    b.y += b.dy;
-  });
-  bullets = bullets.filter(
-    b => b.x > -20 && b.x < canvas.width + 20 && b.y > -20 && b.y < canvas.height + 20
-  );
-
-  // Enemies AI movement & abilities
+  // --- Enemies AI movement & abilities ---
   updateEnemies(player, canvas, zombiesData);
 
   // --- Projectiles (from throwers) ---
@@ -740,28 +1022,48 @@ function gameLoop() {
   if (handleProjectilePlayerCollision(player, updateHealthBar, endGame)) return;
 
   // Draw
-  if (roadBG.complete) ctx.drawImage(roadBG, 0, 0, canvas.width, canvas.height);
-  else ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw all map layers except plant
+  drawMap(ctx, "plant");
+
+  ctx.save();
+  ctx.scale(zoom, zoom);
 
   // Draw player
   ctx.fillStyle = "cyan";
-  ctx.fillRect(player.x, player.y, player.width, player.height);
+  ctx.fillRect(
+    Math.round((player.x - camera.x)),
+    Math.round((player.y - camera.y)),
+    player.width, player.height
+  );
 
   // Draw bullets
   ctx.fillStyle = "yellow";
-  bullets.forEach(b => ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height));
+  bullets.forEach(b => ctx.fillRect(
+    Math.round(b.x - b.width / 2 - camera.x),
+    Math.round(b.y - b.height / 2 - camera.y),
+    b.width, b.height
+  ));
 
-  // Draw enemies with color and health bar
-  drawEnemies(ctx);
+  // Draw enemies
+  drawEnemies(ctx, camera, 0.6);
 
-  // Draw enemy projectiles (rectangles)
-  drawProjectiles(ctx);
+  // Draw enemy projectiles
+  drawProjectiles(ctx, camera);
 
-  // --- Draw and handle powerups ---
-  drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, selectSound);
+  // Draw powerups
+  drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, selectSound, undefined, camera);
+
+  ctx.restore();
+
+  // Draw plant layer on top (player/enemies will be behind plants)
+  drawPlantLayer(ctx);
 
   // Check wave clear
   checkWaveClear();
+
+  autoReload(); // Check for auto-reloading
 
   requestAnimationFrame(gameLoop);
 }
@@ -803,3 +1105,70 @@ window.addEventListener("DOMContentLoaded", () => {
   updateAmmoDisplay();
   updateStaminaBar();
 });
+
+// --- Helper: Check collision with collides layers ---
+function isBlocked(x, y, width, height) {
+  if (!mapData) return false;
+  // For each collides layer
+  for (const layer of mapData.layers) {
+    if (layer.type !== "tilelayer" || !layer.visible || !layer.collides) continue;
+    for (let ty = 0; ty < layer.height; ty++) {
+      for (let tx = 0; tx < layer.width; tx++) {
+        const tileId = layer.data[ty * layer.width + tx];
+        if (tileId <= 0) continue;
+        // Tile world position
+        const tileX = tx * tileWidth;
+        const tileY = ty * tileHeight;
+        // Check AABB collision
+        if (
+          x < tileX + tileWidth &&
+          x + width > tileX &&
+          y < tileY + tileHeight &&
+          y + height > tileY
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Add fullscreen toggle functionality
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    playSelect();
+    document.documentElement.requestFullscreen().catch(err => {
+      console.error(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
+    });
+  } else {
+    playSelect();
+    document.exitFullscreen().catch(err => {
+      console.error(`Error attempting to exit fullscreen mode: ${err.message} (${err.name})`);
+    });
+  }
+}
+
+window.toggleFullscreen = toggleFullscreen;
+
+// Add menu background image logic
+const menuBackground = document.createElement("img");
+menuBackground.src = "src/assets/image/menuScreen1.png";
+menuBackground.id = "menuBackground";
+menuBackground.style.position = "absolute";
+menuBackground.style.top = "0";
+menuBackground.style.left = "0";
+menuBackground.style.width = "100%";
+menuBackground.style.height = "100%";
+menuBackground.style.zIndex = "1000";
+menuBackground.style.display = "block"; // Initially hidden
+
+document.body.appendChild(menuBackground);
+
+function showMenuBackground() {
+  menuBackground.style.display = "block";
+}
+
+function hideMenuBackground() {
+  menuBackground.style.display = "none";
+}
