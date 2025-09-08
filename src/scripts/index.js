@@ -726,28 +726,46 @@ function updateAmmoDisplay() {
   }
 }
 
-// Refine bullet accuracy to ensure it aligns perfectly with the mouse
-function shootBullet(targetX, targetY) {
-  if (!gameRunning || player.ammo <= 0) return;
+// Update shootBullet to handle both screen and world coordinates
+function shootBullet(targetX, targetY, isWorldCoords = false) {
+  if (!gameRunning) return;
+  if (player.ammo <= 0 || isReloading) return;
 
   player.ammo--;
   updateAmmoDisplay();
 
-  // Adjust for canvas offset and scaling
-  const rect = canvas.getBoundingClientRect();
-  const adjustedTargetX = targetX - rect.left;
-  const adjustedTargetY = targetY - rect.top;
+  let cx = player.x + player.width / 2;
+  let cy = player.y + player.height / 2;
+  let speed = 7;
+  let dx, dy;
 
-  const cx = player.x + player.width / 2;
-  const cy = player.y + player.height / 2;
-  const angle = Math.atan2(adjustedTargetY - cy, adjustedTargetX - cx);
-  const speed = 10;
+  // Convert target (mouse or joystick) → world coordinates if needed
+  let worldX, worldY;
+  if (typeof targetX === "number" && typeof targetY === "number") {
+    if (isWorldCoords) {
+      // Already in world space (e.g. joystick direction)
+      worldX = targetX;
+      worldY = targetY;
+    } else {
+      // Screen/canvas space → world space (e.g. mouse click/touch)
+      worldX = targetX / zoom + camera.x;
+      worldY = targetY / zoom + camera.y;
+    }
+
+    let angle = Math.atan2(worldY - cy, worldX - cx);
+    dx = Math.cos(angle) * speed;
+    dy = Math.sin(angle) * speed;
+  } else {
+    // Fallback to last movement direction
+    dx = lastDirection.dx * speed;
+    dy = lastDirection.dy * speed;
+  }
 
   bullets.push({
     x: cx,
     y: cy,
-    dx: Math.cos(angle) * speed,
-    dy: Math.sin(angle) * speed,
+    dx: dx,
+    dy: dy,
     width: 8,
     height: 8,
   });
@@ -757,6 +775,20 @@ function shootBullet(targetX, targetY) {
     shootSound.play();
   }
 }
+
+// Add delay between each shot when using the joystick by tracking the last shoot time and enforcing a minimum delay.
+let lastShootTime = 0;
+const shootDelay = 400; // Delay in milliseconds
+
+function shootBulletWithDelay(targetX, targetY) {
+  const currentTime = Date.now();
+  if (currentTime - lastShootTime < shootDelay) return;
+
+  lastShootTime = currentTime;
+  shootBullet(targetX, targetY);
+}
+
+window.shootBulletWithDelay = shootBulletWithDelay;
 
 // --- End Game ---
 function endGame(victory = false) {
@@ -1171,4 +1203,17 @@ function showMenuBackground() {
 
 function hideMenuBackground() {
   menuBackground.style.display = "none";
+}
+
+// Force horizontal orientation on mobile devices
+if (isMobile) {
+  window.addEventListener("orientationchange", () => {
+    if (window.orientation !== 90 && window.orientation !== -90) {
+      alert("Please rotate your device to landscape mode for the best experience.");
+    }
+  });
+
+  if (window.orientation !== 90 && window.orientation !== -90) {
+    alert("Please rotate your device to landscape mode for the best experience.");
+  }
 }
