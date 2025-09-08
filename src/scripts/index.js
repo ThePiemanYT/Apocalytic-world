@@ -561,114 +561,170 @@ let lastJoystickShoot = 0;                // timestamp of last joystick shot
 const JOYSTICK_SHOOT_DELAY = 200;         // milliseconds between shots (adjust as needed)
 const JOYSTICK_AIM_DISTANCE = 200;        // how far ahead to aim in world units
 
-// Show joystick only on mobile devices
-if (isMobile) {
-  const joystickContainer = document.createElement("div");
-  joystickContainer.id = "joystickContainer";
-  joystickContainer.style.position = "absolute";
-  joystickContainer.style.bottom = "20px";
-  joystickContainer.style.left = "20px";
-  joystickContainer.style.width = "150px";
-  joystickContainer.style.height = "150px";
-  joystickContainer.style.background = "rgba(255, 255, 255, 0.1)";
-  joystickContainer.style.borderRadius = "50%";
-  joystickContainer.style.zIndex = "100";
-  document.body.appendChild(joystickContainer);
+// Updated Joystick class with snapping and deadzone adjustments
+class Joystick {
+  constructor(options = {}) {
+    this.deadzone = options.deadzone ?? 0.15;
+    this.snap = options.snap || 0; // e.g., 8 for 8-way snapping
+    this.snapToUnit = !!options.snapToUnit; // snapped vector magnitude
+    this.id = options.id ?? `joystick-${Math.random().toString(36).slice(2,7)}`;
+    this.parent = options.parent ?? document.body;
+    this.className = options.className ?? '';
+    this.onStart = typeof options.onStart === 'function' ? options.onStart : () => {};
+    this.onMove = typeof options.onMove === 'function' ? options.onMove : () => {};
+    this.onEnd = typeof options.onEnd === 'function' ? options.onEnd : () => {};
 
-  const joystick = document.createElement("div");
-  joystick.id = "joystick";
-  joystick.style.position = "absolute";
-  joystick.style.width = "60px";
-  joystick.style.height = "60px";
-  joystick.style.background = "rgba(255, 255, 255, 0.8)";
-  joystick.style.borderRadius = "50%";
-  joystick.style.left = "50%";
-  joystick.style.top = "50%";
-  joystick.style.transform = "translate(-50%, -50%)";
-  joystickContainer.appendChild(joystick);
+    this.x = 0;
+    this.y = 0;
+    this._pointerId = -1;
 
-  const shootJoystickContainer = document.createElement("div");
-  shootJoystickContainer.id = "shootJoystickContainer";
-  shootJoystickContainer.style.position = "absolute";
-  shootJoystickContainer.style.bottom = "20px";
-  shootJoystickContainer.style.right = "20px";
-  shootJoystickContainer.style.width = "150px";
-  shootJoystickContainer.style.height = "150px";
-  shootJoystickContainer.style.background = "rgba(255, 255, 255, 0.1)";
-  shootJoystickContainer.style.borderRadius = "50%";
-  shootJoystickContainer.style.zIndex = "100";
-  document.body.appendChild(shootJoystickContainer);
+    // Build DOM
+    this._panel = document.createElement('div');
+    this._panel.className = `joystick-panel ${this.className}`.trim();
+    this._panel.id = this.id;
+    this._thumb = document.createElement('div');
+    this._thumb.className = 'joystick-thumb';
+    this._panel.appendChild(this._thumb);
+    this.parent.appendChild(this._panel);
 
-  const shootJoystick = document.createElement("div");
-  shootJoystick.id = "shootJoystick";
-  shootJoystick.style.position = "absolute";
-  shootJoystick.style.width = "60px";
-  shootJoystick.style.height = "60px";
-  shootJoystick.style.background = "rgba(255, 255, 255, 0.8)";
-  shootJoystick.style.borderRadius = "50%";
-  shootJoystick.style.left = "50%";
-  shootJoystick.style.top = "50%";
-  shootJoystick.style.transform = "translate(-50%, -50%)";
-  shootJoystickContainer.appendChild(shootJoystick);
+    requestAnimationFrame(() => this.resetThumb());
 
-  let joystickActive = false;
-  let shootJoystickActive = false;
-  let joystickStartX, joystickStartY;
-  let shootJoystickStartX, shootJoystickStartY;
+    // Pointer handlers
+    this._pd = (e) => this._onPointerDown(e);
+    this._pm = (e) => this._onPointerMove(e);
+    this._pu = (e) => this._onPointerUp(e);
 
-  joystickContainer.addEventListener("touchstart", (e) => {
-    joystickActive = true;
-    joystickStartX = e.touches[0].clientX;
-    joystickStartY = e.touches[0].clientY;
-  });
+    this._panel.addEventListener('pointerdown', this._pd);
+    this._panel.addEventListener('pointermove', this._pm);
+    this._panel.addEventListener('pointerup', this._pu);
+    this._panel.addEventListener('pointercancel', this._pu);
 
-  joystickContainer.addEventListener("touchmove", (e) => {
-    if (!joystickActive) return;
-    const dx = e.touches[0].clientX - joystickStartX;
-    const dy = e.touches[0].clientY - joystickStartY;
-    const distance = Math.min(Math.hypot(dx, dy), 50);
-    const angle = Math.atan2(dy, dx);
+    this._panel.style.touchAction = 'none';
+  }
 
-    joystick.style.left = `${50 + Math.cos(angle) * distance}%`;
-    joystick.style.top = `${50 + Math.sin(angle) * distance}%`;
+  hide() { this._panel.style.display = 'none'; }
+  show() { this._panel.style.display = ''; }
 
-    player.x += Math.cos(angle) * player.speed;
-    player.y += Math.sin(angle) * player.speed;
+  destroy() {
+    this._panel.removeEventListener('pointerdown', this._pd);
+    this._panel.removeEventListener('pointermove', this._pm);
+    this._panel.removeEventListener('pointerup', this._pu);
+    this._panel.remove();
+  }
 
+  resetThumb() {
+    const pw = this._panel.clientWidth || 150;
+    const ph = this._panel.clientHeight || 150;
+    const tw = this._thumb.clientWidth || 60;
+    const th = this._thumb.clientHeight || 60;
+    this._thumb.style.left = `${(pw - tw) / 2}px`;
+    this._thumb.style.top = `${(ph - th) / 2}px`;
+  }
+
+  _onPointerDown(e) {
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || this._pointerId !== -1) return;
+    this._pointerId = e.pointerId;
+    try { this._panel.setPointerCapture(this._pointerId); } catch (_) {}
+    this._moveFromClient(e.clientX, e.clientY);
+    this.onStart();
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  _onPointerMove(e) {
+    if (e.pointerId !== this._pointerId) return;
+    this._moveFromClient(e.clientX, e.clientY);
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  _onPointerUp(e) {
+    if (e.pointerId !== this._pointerId) return;
+    try { this._panel.releasePointerCapture(this._pointerId); } catch (_) {}
+    this._pointerId = -1;
+    this.x = 0; this.y = 0;
+    this.resetThumb();
+    this.onEnd();
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  _moveFromClient(clientX, clientY) {
+    const rect = this._panel.getBoundingClientRect();
+    const pw = rect.width;
+    const ph = rect.height;
+    const cx = pw / 2;
+    const cy = ph / 2;
+
+    let nx = (clientX - rect.left - cx) / (cx / 2);
+    let ny = -(clientY - rect.top - cy) / (cy / 2);
+    nx = Math.max(-1, Math.min(1, nx));
+    ny = Math.max(-1, Math.min(1, ny));
+
+    const mag = Math.hypot(nx, ny);
+    if (mag < this.deadzone) {
+      this.x = 0; this.y = 0;
+      this.onMove(this.x, this.y);
+      return;
+    }
+
+    let dirX = nx / mag;
+    let dirY = ny / mag;
+    let scaledMag = Math.min(1, (mag - this.deadzone) / (1 - this.deadzone));
+
+    if (this.snap && this.snap > 1) {
+      const angle = Math.atan2(dirY, dirX);
+      const sector = (2 * Math.PI) / this.snap;
+      const snappedAngle = Math.round(angle / sector) * sector;
+      dirX = Math.cos(snappedAngle);
+      dirY = Math.sin(snappedAngle);
+
+      if (this.snapToUnit) {
+        this.x = dirX;
+        this.y = dirY;
+      } else {
+        this.x = dirX * scaledMag;
+        this.y = dirY * scaledMag;
+      }
+    } else {
+      this.x = dirX * scaledMag;
+      this.y = dirY * scaledMag;
+    }
+
+    this.onMove(this.x, this.y);
+  }
+}
+
+// Example: Right joystick with 8-way snapping
+const joystickRight = new Joystick({
+  id: 'joystick-right',
+  parent: joystickContainer,
+  deadzone: 0.12,
+  snap: 8,
+  snapToUnit: true,
+  onMove: (x, y) => {
+    const currentTime = performance.now();
+    if (currentTime - lastJoystickShoot < JOYSTICK_SHOOT_DELAY) return;
+    lastJoystickShoot = currentTime;
+    const targetX = player.x + player.width / 2 + x * JOYSTICK_AIM_DISTANCE;
+    const targetY = player.y + player.height / 2 + y * JOYSTICK_AIM_DISTANCE;
+    shootBullet(targetX, targetY, true);
+  }
+});
+
+// Example: Left joystick without snapping
+const joystickLeft = new Joystick({
+  id: 'joystick-left',
+  parent: joystickContainer,
+  deadzone: 0.15,
+  snap: 0,
+  onMove: (x, y) => {
+    player.x += x * player.speed;
+    player.y += y * player.speed;
     player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
     player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
-  });
-
-  joystickContainer.addEventListener("touchend", () => {
-    joystickActive = false;
-    joystick.style.left = "50%";
-    joystick.style.top = "50%";
-  });
-
-  shootJoystickContainer.addEventListener("touchstart", (e) => {
-    shootJoystickActive = true;
-    shootJoystickStartX = e.touches[0].clientX;
-    shootJoystickStartY = e.touches[0].clientY;
-  });
-
-  // Update touchmove handler to remove shooting logic
-  shootJoystickContainer.addEventListener("touchmove", (e) => {
-    if (!shootJoystickActive) return;
-    const dx = e.touches[0].clientX - shootJoystickStartX;
-    const dy = e.touches[0].clientY - shootJoystickStartY;
-    const distance = Math.min(Math.hypot(dx, dy), 50);
-    const angle = Math.atan2(dy, dx);
-
-    shootJoystick.style.left = `${50 + Math.cos(angle) * distance}%`;
-    shootJoystick.style.top = `${50 + Math.sin(angle) * distance}%`;
-  });
-
-  shootJoystickContainer.addEventListener("touchend", () => {
-    shootJoystickActive = false;
-    shootJoystick.style.left = "50%";
-    shootJoystick.style.top = "50%";
-  });
-}
+  }
+});
 
 // --- Manual reload key ---
 document.addEventListener("keydown", e => {
