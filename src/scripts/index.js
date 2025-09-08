@@ -646,6 +646,7 @@ if (isMobile) {
     shootJoystickStartY = e.touches[0].clientY;
   });
 
+  // Update touchmove handler to remove shooting logic
   shootJoystickContainer.addEventListener("touchmove", (e) => {
     if (!shootJoystickActive) return;
     const dx = e.touches[0].clientX - shootJoystickStartX;
@@ -655,10 +656,6 @@ if (isMobile) {
 
     shootJoystick.style.left = `${50 + Math.cos(angle) * distance}%`;
     shootJoystick.style.top = `${50 + Math.sin(angle) * distance}%`;
-
-    const targetX = player.x + player.width / 2 + Math.cos(angle) * 100;
-    const targetY = player.y + player.height / 2 + Math.sin(angle) * 100;
-    shootBullet(targetX, targetY);
   });
 
   shootJoystickContainer.addEventListener("touchend", () => {
@@ -780,12 +777,13 @@ function shootBullet(targetX, targetY, isWorldCoords = false) {
 let lastShootTime = 0;
 const shootDelay = 400; // Delay in milliseconds
 
+// Fix joystick delay implementation in shootBulletWithDelay
 function shootBulletWithDelay(targetX, targetY) {
-  const currentTime = Date.now();
+  const currentTime = performance.now(); // Use performance.now() for better precision
   if (currentTime - lastShootTime < shootDelay) return;
 
   lastShootTime = currentTime;
-  shootBullet(targetX, targetY);
+  shootBullet(targetX, targetY, true); // Ensure world coordinates are passed correctly
 }
 
 window.shootBulletWithDelay = shootBulletWithDelay;
