@@ -556,6 +556,11 @@ canvas.addEventListener("mousedown", e => {
   }
 });
 
+// Joystick firing cooldown
+let lastJoystickShoot = 0;                // timestamp of last joystick shot
+const JOYSTICK_SHOOT_DELAY = 200;         // milliseconds between shots (adjust as needed)
+const JOYSTICK_AIM_DISTANCE = 200;        // how far ahead to aim in world units
+
 // Show joystick only on mobile devices
 if (isMobile) {
   const joystickContainer = document.createElement("div");
