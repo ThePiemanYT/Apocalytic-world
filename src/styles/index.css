@@ -1,0 +1,219 @@
+body {
+      margin: 0;
+      background: rgba(17, 17, 17, 0.85); /* Adjusted transparency */
+      color: white;
+      font-family: "Press Start 2P", Arial, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    canvas {
+      background: #222;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #menu, #settings, #gameOver {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0,0,0,0.85);
+      text-align: center;
+      z-index: 2000;
+    }
+    #gameOver { display: none; }
+    button {
+      margin: 10px;
+      padding: 14px 28px;
+      border: none;
+      border-radius: 8px;
+      font-family: "Press Start 2P";
+      font-size: 20px;
+      cursor: pointer;
+      background: #4CAF50;
+      color: white;
+    }
+    #controls {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 30px;
+    }
+    #controls button {
+      width: 70px;
+      height: 70px;
+      font-size: 28px;
+      border-radius: 50%;
+      background: #555;
+    }
+    #score {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+      font-weight: bold;
+    }
+    #audioControlSection {
+      margin: 18px 0 18px 0;
+      padding: 18px 32px;
+      background: #181818;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 340px;
+    }
+    #audioControlSection h3 {
+      margin: 0 0 12px 0;
+      font-size: 18px;
+      color: #ffe066;
+      letter-spacing: 1px;
+    }
+    #audioToggles {
+      margin: 10px 0 18px 0;
+      display: flex;
+      gap: 30px;
+      justify-content: center;
+      align-items: center;
+    }
+    #audioToggles label {
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #222;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #audioToggles input[type="checkbox"] {
+      width: 22px;
+      height: 22px;
+      accent-color: #4CAF50;
+    }
+    #settings button.selected-mode {
+      background: yellow;
+      color: #222;
+    }
+    #settings button.unselected-mode {
+      background: #4CAF50;
+      color: white;
+    }
+    #controlToggles {
+      display: flex;
+      gap: 18px;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+    #controlToggles button {
+      min-width: 170px;
+    }
+    #audioSection, #controlSection {
+      margin: 18px 0 18px 0;
+      padding: 18px 32px;
+      background: #181818;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 340px;
+    }
+    #audioSection h3, #controlSection h3 {
+      margin: 0 0 12px 0;
+      font-size: 18px;
+      color: #ffe066;
+      letter-spacing: 1px;
+    }
+    #customKeys {
+      margin-top: 16px;
+      display: flex;
+      gap: 18px;
+      align-items: center;
+    }
+    #customKeys label {
+      font-size: 16px;
+      background: #222;
+      padding: 6px 14px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #customKeys input[type="text"] {
+      width: 32px;
+      font-size: 18px;
+      text-align: center;
+      border: 1px solid #4CAF50;
+      border-radius: 4px;
+      background: #181818;
+      color: #ffe066;
+      font-family: "Press Start 2P", Arial, sans-serif;
+      margin-left: 4px;
+      outline: none;
+      cursor: pointer;
+    }
+    #resetKeysBtn {
+      padding: 8px 18px;
+      font-size: 14px;
+      margin-left: 10px;
+      border-radius: 6px;
+      background: #444;
+      color: #ffe066;
+      border: none;
+      font-family: "Press Start 2P", Arial, sans-serif;
+      cursor: pointer;
+    }
+    #resetKeysBtn:hover {
+      background: #ffe066;
+      color: #222;
+    }
+    #healthBarContainer {
+      position: absolute;
+      bottom: 32px;
+      left: 32px;
+      width: 320px;
+      height: 28px;
+      background: #333;
+      border-radius: 14px;
+      border: 2px solid #ffe066;
+      overflow: hidden;
+      z-index: 500;
+    }
+    #healthBar {
+      height: 100%;
+      background: linear-gradient(90deg, #4CAF50, #ffe066);
+      width: 100%;
+      transition: width 0.3s;
+    }
+    #waveDisplay {
+      position: absolute;
+      top: 95px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 22px;
+      color: #ffe066;
+      font-family: "Press Start 2P", Arial, sans-serif;
+      z-index: 500;
+    }
+    #pauseBtn {
+      background: #222;
+      color: #ffe066;
+      border: 2px solid #ffe066;
+      border-radius: 8px;
+      font-family: "Press Start 2P", Arial, sans-serif;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      z-index: 100;
+    }
+    #pauseBtn:hover {
+      background: #ffe066;
+      color: #222;
+    }

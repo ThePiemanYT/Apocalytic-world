@@ -1,0 +1,79 @@
+{
+  "basic": {
+    "speed": 2,
+    "health": 2,
+    "color": "green",
+    "size": 40,
+    "score": 10
+  },
+  "fast": {
+    "speed": 3.5,
+    "health": 1,
+    "color": "orange",
+    "size": 38,
+    "score": 15
+  },
+  "tank": {
+    "speed": 1,
+    "health": 5,
+    "color": "purple",
+    "size": 56,
+    "score": 30
+  },
+  "summoner": {
+    "speed": 1.5,
+    "health": 6,
+    "color": "blue",
+    "size": 48,
+    "score": 40
+  },
+  "minion": {
+    "speed": 3,
+    "health": 1,
+    "color": "gray",
+    "size": 30,
+    "score": 5
+  },
+  "armored": {
+    "speed": 1.75,
+    "health": 20,
+    "color": "dark-gray",
+    "size": 60,
+    "score": 50
+  },
+  "giant": {
+    "speed": 0.5,
+    "health": 30,
+    "color": "drak-green",
+    "size": 80,
+    "score": 100
+  },
+  "Juggernaut": {
+    "speed": 0.8,
+    "health": 40,
+    "color": "dark-blue",
+    "size": 82,
+    "score": 150
+  },
+  "Spitter": {
+    "speed": 2.5,
+    "health": 8,
+    "color": "red",
+    "size": 40,
+    "score": 35
+  },
+  "Spitter1": {
+    "speed": 2.5,
+    "health": 4,
+    "color": "red",
+    "size": 35,
+    "score": 18
+  },
+  "thrower": {
+    "speed": 1.5,
+    "health": 10,
+    "color": "brown",
+    "size": 45,
+    "score": 25
+  }
+}
