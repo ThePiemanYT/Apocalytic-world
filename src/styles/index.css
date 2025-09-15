@@ -1,7 +1,7 @@
 /* --- Global Reset --- */
 body {
   margin: 0;
-  background: transparent; /* Fully transparent, animation shows through */
+  background: transparent;
   color: white;
   font-family: "Press Start 2P", Arial, sans-serif;
   overflow: hidden;
@@ -16,25 +16,25 @@ canvas {
   display: block;
   width: 100vw;
   height: 100vh;
-  background: transparent; /* transparent so FinisherHeader shows */
+  background: transparent;
   z-index: 0;
   position: absolute;
   top: 0;
   left: 0;
 }
 
-/* --- Animated Overlay (Finisher Header) --- */
+/* --- Animated Overlay --- */
 .finisher-header {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 1800; /* Below menus, above canvas */
-  pointer-events: none; /* Don’t block button clicks */
+  z-index: 1800;
+  pointer-events: none;
 }
 
-/* --- Menus (above overlay) --- */
+/* --- Menus --- */
 #menu, #settings, #gameOver {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -50,20 +50,43 @@ canvas {
 
 /* --- Buttons --- */
 button {
-  margin: 10px;
-  padding: 14px 28px;
+  font-family: "Press Start 2P";
   border: none;
   border-radius: 8px;
-  font-family: "Press Start 2P";
-  font-size: 20px;
   cursor: pointer;
-  background: #4CAF50;
-  color: white;
-  transition: background 0.2s, transform 0.1s;
+  transition: transform 0.2s ease, background 0.2s ease;
 }
-button:hover {
-  background: #66bb6a;
+
+/* --- Menu Buttons --- */
+#menu button,
+#settings button,
+.menuPanel button,
+#gameOver button {
+  background: #222;
+  color: #ffe066;
+  border: 2px solid #ffe066;
+  padding: 14px 28px;
+  font-size: 18px;
+  margin: 10px 0;
+}
+#menu button:hover,
+#settings button:hover,
+.menuPanel button:hover,
+#gameOver button:hover {
+  background: #333;
   transform: scale(1.05);
+}
+#menu button:active,
+#settings button:active,
+.menuPanel button:active,
+#gameOver button:active {
+  transform: scale(0.95);
+}
+
+/* --- Special Highlight (fullscreen active) --- */
+#fullscreenBtn.fullscreen-active {
+  background: yellow;
+  color: #222;
 }
 
 /* --- Mobile Controls --- */
@@ -101,7 +124,6 @@ button:hover {
   transform: translateX(-50%);
   font-size: 22px;
   color: #ffe066;
-  font-family: "Press Start 2P", Arial, sans-serif;
   z-index: 100;
 }
 #healthBarContainer {
@@ -128,11 +150,7 @@ button:hover {
   background: #222;
   color: #ffe066;
   border: 2px solid #ffe066;
-  border-radius: 8px;
-  font-family: "Press Start 2P", Arial, sans-serif;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-  z-index: 1500;
+  font-size: 16px;
 }
 #pauseBtn:hover {
   background: #ffe066;
@@ -148,7 +166,8 @@ button:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 340px;
+  width: auto;
+  max-width: 90%;
 }
 #audioControlSection h3,
 #audioSection h3,
@@ -158,6 +177,8 @@ button:hover {
   color: #ffe066;
   letter-spacing: 1px;
 }
+
+/* --- Audio Toggles --- */
 #audioToggles {
   margin: 10px 0 18px 0;
   display: flex;
@@ -180,29 +201,57 @@ button:hover {
   height: 22px;
   accent-color: #4CAF50;
 }
-#settings button.selected-mode {
-  background: yellow;
-  color: #222;
+
+/* --- Control Grid --- */
+.controlGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;  /* two equal columns */
+  gap: 12px;                       /* space between buttons */
+  width: 100%;
+  max-width: 360px;                /* keep grid inside panel */
+  margin: 0 auto 16px auto;        /* space at bottom before Back button */
 }
-#settings button.unselected-mode {
-  background: #4CAF50;
-  color: white;
+
+.controlGrid button {
+  background: #222;
+  color: #ffe066;
+  border: 2px solid #ffe066;
+  padding: 12px;                   /* tighter padding so they don’t leak */
+  font-size: 14px;                 /* readable but compact */
+  border-radius: 6px;
+  text-align: center;
+  word-break: break-word;          /* long labels wrap if needed */
+  white-space: normal;
+  transition: transform 0.2s ease, background 0.2s ease;
 }
-#controlToggles {
-  display: flex;
-  gap: 18px;
-  flex-direction: row;
-  justify-content: center;
-  margin-bottom: 8px;
+
+.controlGrid button:hover {
+  background: #333;
+  transform: scale(1.05);
 }
-#controlToggles button {
-  min-width: 170px;
+
+/* Back button centered under the grid */
+.controlBack {
+  margin-top: 10px;
+  background: #222;
+  color: #ffe066;
+  border: 2px solid #ffe066;
+  padding: 10px 20px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
 }
+.controlBack:hover {
+  background: #333;
+}
+
+/* --- Custom Keys --- */
 #customKeys {
   margin-top: 16px;
   display: flex;
   gap: 18px;
-  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 #customKeys label {
   font-size: 16px;
@@ -221,12 +270,10 @@ button:hover {
   border-radius: 4px;
   background: #181818;
   color: #ffe066;
-  font-family: "Press Start 2P", Arial, sans-serif;
   margin-left: 4px;
   outline: none;
   cursor: pointer;
 }
-
 #resetKeysBtn {
   padding: 8px 18px;
   font-size: 14px;
@@ -235,7 +282,6 @@ button:hover {
   background: #444;
   color: #ffe066;
   border: none;
-  font-family: "Press Start 2P", Arial, sans-serif;
   cursor: pointer;
 }
 #resetKeysBtn:hover {
@@ -243,12 +289,12 @@ button:hover {
   color: #222;
 }
 
+/* --- Version Label --- */
 #versionLabel {
   position: absolute;
   bottom: 10px;
   right: 14px;
   font-size: 14px;
-  font-family: "Press Start 2P", Arial, sans-serif;
   opacity: 0.9;
   pointer-events: none;
 }
@@ -266,10 +312,93 @@ button:hover {
   max-height: 70vh;
   overflow-y: auto;
 }
+#creditSection h3 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  color: #ffe066;
+}
 
+/* --- Menu Panel --- */
+.menuPanel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  max-width: 90%;
+  max-height: 80%;
+  background: rgba(0, 0, 0, 0.92);
+  color: #ffe066;
+  border: 3px solid #ffe066;
+  border-radius: 12px;
+  padding: 20px;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  z-index: 2000;
+}
+.menuPanel h3 {
+  margin: 10px 0 20px 0;
+  font-size: 18px;
+  color: #ffd166;
+}
+
+/* --- Audio & Control Settings --- */
+#audioControlSection,
+#audioSection,
+#controlSection,
+#creditSection {
+  margin: 18px 0;
+  padding: 18px 32px;
+  background: rgba(0, 0, 0, 0.92); /* match menuPanel */
+  border: 2px solid #ffe066;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 340px;
+  max-width: 90%;
+  color: #ffe066;
+}
+
+/* Headings inside sections */
+#audioSection h3,
+#controlSection h3,
 #creditSection h3 {
   margin: 0 0 12px 0;
   font-size: 18px;
   color: #ffe066;
   letter-spacing: 1px;
+}
+
+/* --- Settings Popup Animation --- */
+@keyframes settingsPop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Apply animation when opening settings */
+#settings.show {
+  animation: settingsPop 0.25s ease forwards;
+}
+
+#keybindSection input[type="text"] {
+  width: 40px;
+  font-size: 16px;
+  text-align: center;
+  border: 1px solid #505bff;
+  border-radius: 4px;
+  background: #181818;
+  color: #ffe066;
+  margin-left: 4px;
+  outline: none;
+  cursor: pointer;
+  
 }

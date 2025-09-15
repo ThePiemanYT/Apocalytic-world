@@ -581,32 +581,54 @@ function backAudio() {
 
 // --- Controls ---
 function openControl() {
-  hideMainButtons();
+  document.getElementById("settings").style.display = "flex";
   document.getElementById("controlSection").style.display = "flex";
+  document.getElementById("audioSetting").style.display = "none";
+  document.getElementById("controlSetting").style.display = "none";
   document.getElementById("creditSetting").style.display = "none";
+  document.getElementById("close-setting").style.display = "none";
   playSelect();
 }
 
 function backControl() {
   document.getElementById("controlSection").style.display = "none";
+  document.getElementById("audioSetting").style.display = "flex";
+  document.getElementById("controlSetting").style.display = "flex";
   document.getElementById("creditSetting").style.display = "flex";
-  showMainButtons();
+  document.getElementById("close-setting").style.display = "flex";
   playSelect();
 }
 
-// Sub-control pages
 function openControlType() {
-  document.getElementById("controlContent").innerHTML = "<p>Choose: PC / Mobile (todo).</p>";
+  document.getElementById("controlSection").style.display = "none";
+  document.getElementById("controlTypeSection").style.display = "flex";
+  playSelect();
+}
+function backControlType() {
+  document.getElementById("controlTypeSection").style.display = "none";
+  document.getElementById("controlSection").style.display = "flex";
   playSelect();
 }
 
 function openKeybind() {
-  document.getElementById("controlContent").innerHTML = "<p>Keybinding options (todo).</p>";
+  document.getElementById("controlSection").style.display = "none";
+  document.getElementById("keybindSection").style.display = "flex";
+  playSelect();
+}
+function backKeybind() {
+  document.getElementById("keybindSection").style.display = "none";
+  document.getElementById("controlSection").style.display = "flex";
   playSelect();
 }
 
 function openHelp() {
-  document.getElementById("controlContent").innerHTML = "<p>Help text goes here.</p>";
+  document.getElementById("controlSection").style.display = "none";
+  document.getElementById("helpSection").style.display = "flex";
+  playSelect();
+}
+function backHelp() {
+  document.getElementById("helpSection").style.display = "none";
+  document.getElementById("controlSection").style.display = "flex";
   playSelect();
 }
 
@@ -729,6 +751,9 @@ window.backCredit = backCredit;
 window.openControlType = openControlType;
 window.openKeybind = openKeybind;
 window.openHelp = openHelp;
+window.backControlType = backControlType;
+window.backKeybind = backKeybind;
+window.backHelp = backHelp;
 
 // --- Custom Key Setup ---
 function updateKeyInputs() {
@@ -1473,17 +1498,15 @@ function checkWaveClear() {
   }
 }
 
-// Add fullscreen toggle functionality
+// --- Fullscreen Toggle ---
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
-    playSelect();
-    document.documentElement.requestFullscreen().catch(err => {
-      console.error(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
+    document.documentElement.requestFullscreen().then(() => {
+      document.getElementById("fullscreenBtn").classList.add("fullscreen-active");
     });
   } else {
-    playSelect();
-    document.exitFullscreen().catch(err => {
-      console.error(`Error attempting to exit fullscreen mode: ${err.message} (${err.name})`);
+    document.exitFullscreen().then(() => {
+      document.getElementById("fullscreenBtn").classList.remove("fullscreen-active");
     });
   }
 }

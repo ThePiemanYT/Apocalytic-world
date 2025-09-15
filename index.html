@@ -25,7 +25,7 @@
     <button onclick="startGame()">Start</button>
     <button onclick="openSettings()">Settings</button>
     <button onclick="quitGame()">Quit</button>
-    <div id="versionLabel">v1.0.1</div>
+    <div id="versionLabel">v1.0.2</div>
   </div>  
 
   <div class="header finisher-header" style="width: 100%; height: 300px;"></div>
@@ -50,18 +50,55 @@
 
     <!-- CONTROLS -->
     <button onclick="openControl()" id="controlSetting">Controls</button>
-    <div id="controlSection" style="display:none;">
+    <div id="controlSection" style="display:none; flex-direction:column; align-items:center;">
       <h3>Controls</h3>
-      <div class="controlButtons">
-        <button onclick="openControlType()">Control Type</button>
-        <button onclick="openKeybind()">Keybinds</button>
-        <button onclick="toggleFullscreen()">Toggle Fullscreen</button>
-        <button onclick="openHelp()">Help</button>
+
+      <!-- Grid of 4 main buttons -->
+      <div class="controlGrid">
+        <button onclick="openControlType()" id="controlTypeBtn">Control Type</button>
+        <button onclick="openKeybind()" id="keybindBtn">Keybinds</button>
+        <button onclick="toggleFullscreen()" id="fullscreenBtn">Toggle Fullscreen</button>
+        <button onclick="openHelp()" id="helpBtn">Help</button>
       </div>
-      <div id="controlContent">
-        <p style="color:#aaa;">Select an option above.</p>
+
+      <!-- Back button -->
+      <button onclick="backControl()" class="backBtn" style="margin-top:18px;">Back</button>
+    </div>
+
+    <!-- CONTROL TYPE MENU -->
+    <div id="controlTypeSection" class="menuPanel">
+      <h3>Control Type</h3>
+      <button onclick="setControl('buttons')" id="buttonModeBtn">Buttons</button>
+      <button onclick="setControl('joystick')" id="joystickModeBtn">Joystick</button>
+      <p style="color:#aaa; margin-top:12px;">Choose your preferred input method.</p>
+      <button onclick="backControlType()" class="backBtn">Back</button>
+    </div>
+
+    <!-- KEYBIND MENU -->
+    <div id="keybindSection" class="menuPanel">
+      <h3>Keybinds</h3>
+      <div style="margin: 12px 0; text-align:left;">
+        <label>Left: <input type="text" id="leftKeyInput"></label><br>
+        <label>Right: <input type="text" id="rightKeyInput"></label><br>
+        <label>Up: <input type="text" id="upKeyInput"></label><br>
+        <label>Down: <input type="text" id="downKeyInput"></label><br>
       </div>
-      <button onclick="backControl()" class="backBtn">Back</button>
+      <button id="resetKeysBtn">Reset Keys</button>
+      <button onclick="backKeybind()" class="backBtn">Back</button>
+    </div>
+
+    <!-- HELP MENU -->
+    <div id="helpSection" class="menuPanel">
+      <h3>Help</h3>
+      <p style="max-width:600px; line-height:1.5;">
+        Use <b>WASD / Arrow Keys</b> to move.<br>
+        Use your mouse to aim and shoot.<br>
+        Use <b>R</b> to reload.<br>
+        Use <b>Shift</b> to sprint.<br>
+        Use <b>Esc</b> to pause/resume.<br><br>
+        Survive waves of enemies and collect powerups!
+      </p>
+      <button onclick="backHelp()" class="backBtn">Back</button>
     </div>
 
     <!-- CREDITS -->
@@ -76,9 +113,6 @@
 
     <!-- BACK -->
     <button onclick="closeSettings()" id="close-setting">Back</button>
-
-    <!-- VERSION LABEL -->
-    <div id="versionLabel">v1.0.0</div>
   </div>
 
 
