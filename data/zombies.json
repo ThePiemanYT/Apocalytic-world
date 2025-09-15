@@ -1,79 +1,89 @@
 {
   "basic": {
     "speed": 2,
-    "health": 2,
+    "health": 4,
     "color": "green",
     "size": 40,
-    "score": 10
+    "score": 10,
+    "knockbackResist": 0.2
   },
   "fast": {
     "speed": 3.5,
-    "health": 1,
+    "health": 2,
     "color": "orange",
     "size": 38,
     "score": 15
   },
   "tank": {
     "speed": 1,
-    "health": 5,
+    "health": 10,
     "color": "purple",
     "size": 56,
-    "score": 30
+    "score": 30,
+    "knockbackResist": 0.6
   },
   "summoner": {
     "speed": 1.5,
-    "health": 6,
+    "health": 8,
     "color": "blue",
     "size": 48,
-    "score": 40
+    "score": 40,
+    "knockbackResist": 0.15
   },
   "minion": {
     "speed": 3,
-    "health": 1,
+    "health": 2,
     "color": "gray",
     "size": 30,
-    "score": 5
+    "score": 5,
+    "knockbackResist": 0.1
   },
   "armored": {
     "speed": 1.75,
-    "health": 20,
-    "color": "dark-gray",
+    "health": 22,
+    "color": "aquamarine",
     "size": 60,
-    "score": 50
+    "score": 50,
+    "knockbackResist": 0.5
   },
   "giant": {
     "speed": 0.5,
-    "health": 30,
-    "color": "drak-green",
+    "health": 35,
+    "color": "darkolivegreen",
     "size": 80,
-    "score": 100
+    "score": 100,
+    "knockbackResist": 0.8
   },
   "Juggernaut": {
     "speed": 0.8,
-    "health": 40,
-    "color": "dark-blue",
+    "health": 45,
+    "color": "darkslategrey",
     "size": 82,
-    "score": 150
+    "score": 150,
+    "knockbackResist": 0.85
   },
   "Spitter": {
     "speed": 2.5,
-    "health": 8,
+    "health": 16,
     "color": "red",
     "size": 40,
-    "score": 35
+    "score": 35,
+    "knockbackResist": 0.3
   },
   "Spitter1": {
     "speed": 2.5,
-    "health": 4,
+    "health": 8,
     "color": "red",
     "size": 35,
-    "score": 18
+    "score": 18,
+    "knockbackResist": 0.2
   },
   "thrower": {
     "speed": 1.5,
-    "health": 10,
-    "color": "brown",
+    "health": 20,
+    "color": "burlywood",
     "size": 45,
-    "score": 25
+    "score": 25,
+    "knockbackResist": 0.25
   }
 }

@@ -13,6 +13,7 @@ import {
 } from "./enemy.js";
 import { reload } from "./reload.js";
 import { spawnPowerups, drawAndHandlePowerups } from "./powerup.js";
+import { initPowerupHUD, updatePowerupHUD, activePowerups } from "./powerup.js";
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -24,14 +25,82 @@ const waveDisplay = document.getElementById("waveDisplay");
 // --- Player & Game State ---
 let player = {
   x: 0, y: 0, width: 24, height: 24,
-  speed: 6,
-  normalSpeed: 6,
-  sprintSpeed: 10,
+  speed: 4,
+  normalSpeed: 4,
+  sprintSpeed: 6,
   maxHealth: 10, health: 10,
   magazineSize: 16, ammo: 16, reserveAmmo: 1024,
   stamina: 100, maxStamina: 100,
-  sprinting: false
+  sprinting: false,
+
+  // --- Upgrade stats (magazine replaces recoil) ---
+  upgrades: {
+    damage: 0,
+    health: 0,
+    speed: 0,
+    magazine: 0,
+    knockback: 0
+  },
+
+  lastHitTime: 0,
+  immune: false,    
 };
+
+// capture immutable bases so recalculation is idempotent
+const INITIAL_PLAYER_BASES = {
+  maxHealth: player.maxHealth,
+  normalSpeed: player.normalSpeed,
+  sprintSpeed: player.sprintSpeed,
+  magazine: player.magazineSize,
+  baseDamage: 1
+};
+
+// Recalculate derived player stats from player.upgrades (idempotent)
+function recalcPlayerStats() {
+  const hpPerLevel = 2;
+  const speedPerLevel = 0.25; // reduced so upgrades don't feel too fast
+  const magazinePerLevel = 4; // per level magazine increase
+
+  player.maxHealth = INITIAL_PLAYER_BASES.maxHealth + (player.upgrades.health || 0) * hpPerLevel;
+  // if player's health is missing or NaN, reset to max
+  if (typeof player.health !== 'number' || Number.isNaN(player.health)) player.health = player.maxHealth;
+  // clamp current HP to new max
+  player.health = Math.min(player.health, player.maxHealth);
+
+  player.normalSpeed = INITIAL_PLAYER_BASES.normalSpeed + (player.upgrades.speed || 0) * speedPerLevel;
+  player.sprintSpeed = INITIAL_PLAYER_BASES.sprintSpeed + (player.upgrades.speed || 0) * speedPerLevel;
+
+  // magazine size derived from upgrade
+  player.magazineSize = INITIAL_PLAYER_BASES.magazine + (player.upgrades.magazine || 0) * magazinePerLevel;
+
+  // keep runtime speed synced (will be overridden in sprint logic during game loop)
+  player.speed = player.sprinting ? player.sprintSpeed : player.normalSpeed;
+}
+
+// Single place to get damage for new bullets
+function getPlayerDamage() {
+  const base = INITIAL_PLAYER_BASES.baseDamage + (player.upgrades.damage || 0);
+  return player.doubleDamage ? base * 2 : base;
+}
+
+// Call this when an upgrade level was just added (applies immediate effects)
+function onUpgradeApplied(key) {
+  recalcPlayerStats();
+
+  if (key === 'health') {
+    const healOnLevel = 2;
+    player.health = Math.min(player.health + healOnLevel, player.maxHealth);
+    if (typeof updateHealthBar === 'function') updateHealthBar();
+  } else if (key === 'speed') {
+    player.speed = player.sprinting ? player.sprintSpeed : player.normalSpeed;
+  } else if (key === 'magazine') {
+    // give some immediate rounds to current magazine (but don't exceed new magazine size)
+    player.ammo = Math.min(player.ammo + 4, player.magazineSize);
+    updateAmmoDisplay();
+  }
+  // damage/knockback applied by getPlayerDamage() and enemy logic respectively
+}
+
 let bullets = [];
 let keys = {};
 let controlMode = "buttons"; // default
@@ -55,7 +124,13 @@ let sfxEnabled = true;
 const selectSound = new Audio("src/assets/sound/blipSelect.wav");
 const explosionSound = new Audio("src/assets/sound/explosion.wav");
 const shootSound = new Audio("src/assets/sound/laserShoot.wav");
-const reloadSound = new Audio("src/assets/sound/reload-gun.mp3"); // --- Reload sound ---
+const hitHurt = new Audio("src/assets/sound/hitHurt.wav");
+const powerUpSound = new Audio("src/assets/sound/powerUp.wav");
+const reloadSound = new Audio("src/assets/sound/reload-gun.mp3");
+const victorySound = new Audio("src/assets/sound/victory.mp3");
+victorySound.volume = 0.9;
+const gameOverSound = new Audio("src/assets/sound/game-over.mp3");
+gameOverSound.volume = 0.9;
 
 const backgroundMusic = document.getElementById("backgroundMusic");
 backgroundMusic.volume = 0.5;
@@ -124,6 +199,23 @@ function updateStaminaBar() {
   staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
 }
 
+// --- Powerup HUD ---
+const powerupHUD = document.createElement("div");
+Object.assign(powerupHUD.style, {
+  position: "absolute",
+  bottom: "40px",
+  left: "50%",
+  transform: "translateX(-50%)",
+  display: "flex",
+  gap: "16px",
+  fontFamily: "Press Start 2P, sans-serif",
+  fontSize: "16px",
+  color: "#ffe066",
+  textShadow: "2px 2px 4px #000",
+  zIndex: 1500
+});
+document.body.appendChild(powerupHUD);
+
 // --- Wave UI ---
 function updateWaveDisplay() {
   waveDisplay.textContent = "Wave: " + (currentWave + 1);
@@ -151,6 +243,189 @@ function spawnWaveEnemy() {
   const type = waveEnemyQueue.shift();
   spawnEnemy(type, zombiesData, canvas.width);
   if (waveEnemyQueue.length === 0) waveSpawning = false;
+}
+
+let upgradeScreenShown = false;
+
+// --- Upgrade Screen ---
+function openUpgradeScreen() {
+  // Prevent opening twice
+  if (document.getElementById("upgrade-modal")) return;
+
+  paused = true;
+
+  const upgradeKeys = [
+    { key: "damage", label: "Damage" },
+    { key: "health", label: "Health" },
+    { key: "speed", label: "Speed" },
+    { key: "magazine", label: "Magazine" },
+    { key: "knockback", label: "Knockback" }
+  ];
+  const maxPerUpgrade = 5;
+  const pickLimit = 3;
+  let picks = 0;
+
+  // Ensure upgrade keys exist
+  player.upgrades = player.upgrades || {};
+  upgradeKeys.forEach(u => {
+    if (typeof player.upgrades[u.key] !== "number") player.upgrades[u.key] = 0;
+  });
+
+  // Modal overlay
+  const modal = document.createElement("div");
+  modal.id = "upgrade-modal";
+  Object.assign(modal.style, {
+    position: "fixed",
+    inset: "0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(0,0,0,0.55)", // darker transparent
+    zIndex: 9999
+  });
+
+  // Panel
+  const panel = document.createElement("div");
+  Object.assign(panel.style, {
+    width: "600px",
+    maxWidth: "96%",
+    background: "rgba(20,20,20,0.85)", // transparent dark
+    borderRadius: "12px",
+    padding: "18px",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.7)",
+    color: "#fff",
+    fontFamily: "Press Start 2P, sans-serif",
+    textAlign: "center"
+  });
+
+  // Header
+  const header = document.createElement("div");
+  header.style.marginBottom = "14px";
+  header.innerHTML = `
+    <div style="font-size:18px;color:#ffd166">Upgrades</div>
+    <div id="pick-count" style="font-size:13px;opacity:0.9">Picked: 0 / ${pickLimit}</div>
+  `;
+  panel.appendChild(header);
+
+  // Rows
+  const rows = document.createElement("div");
+  rows.style.display = "flex";
+  rows.style.flexDirection = "column";
+  rows.style.gap = "12px";
+  panel.appendChild(rows);
+
+  upgradeKeys.forEach(u => {
+    const row = document.createElement("div");
+    Object.assign(row.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "10px",
+      borderRadius: "8px",
+      background: "rgba(255,255,255,0.05)"
+    });
+
+    const label = document.createElement("div");
+    label.textContent = u.label;
+    label.style.fontSize = "14px";
+    row.appendChild(label);
+
+    // Blocks
+    const blocks = document.createElement("div");
+    blocks.style.display = "flex";
+    blocks.style.gap = "6px";
+    for (let i = 0; i < maxPerUpgrade; i++) {
+      const block = document.createElement("div");
+      block.className = "upgrade-block";
+      block.dataset.upgrade = u.key;
+      block.dataset.index = i;
+      Object.assign(block.style, {
+        width: "20px",
+        height: "14px",
+        borderRadius: "4px",
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.1)"
+      });
+      blocks.appendChild(block);
+    }
+    row.appendChild(blocks);
+
+    // Plus button
+    const plus = document.createElement("button");
+    plus.textContent = "+";
+    plus.dataset.upgrade = u.key;
+    Object.assign(plus.style, {
+      width: "34px",
+      height: "24px",
+      borderRadius: "6px",
+      border: "none",
+      cursor: "pointer",
+      fontWeight: 800,
+      fontSize: "14px",
+      background: "linear-gradient(180deg,#ffd166,#ffb347)",
+      color: "#222"
+    });
+    row.appendChild(plus);
+
+    rows.appendChild(row);
+  });
+
+  modal.appendChild(panel);
+  document.body.appendChild(modal);
+
+  // Refresh UI
+  function refreshBlocks() {
+    modal.querySelectorAll(".upgrade-block").forEach(b => {
+      const key = b.dataset.upgrade;
+      const idx = Number(b.dataset.index);
+      const lvl = player.upgrades[key] || 0;
+      if (idx < lvl) {
+        b.style.background = "#ffd166";
+        b.style.boxShadow = "0 0 6px rgba(255,209,102,0.45)";
+      } else {
+        b.style.background = "rgba(255,255,255,0.08)";
+        b.style.boxShadow = "none";
+      }
+    });
+    const pc = document.getElementById("pick-count");
+    if (pc) pc.textContent = `Picked: ${picks} / ${pickLimit}`;
+  }
+
+  // Wire button logic
+  modal.querySelectorAll("button[data-upgrade]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (picks >= pickLimit) return;
+      const key = btn.dataset.upgrade;
+      const cur = player.upgrades[key] || 0;
+      if (cur >= maxPerUpgrade) return;
+      player.upgrades[key] = cur + 1;
+      picks++;
+      onUpgradeApplied(key); // apply actual stat change
+      refreshBlocks();
+
+      if (picks >= pickLimit) finishAndContinue();
+    });
+  });
+
+  function escHandler(e) {
+    if (e.key === "Escape") {
+      if (picks > 0) finishAndContinue();
+    }
+  }
+  document.addEventListener("keydown", escHandler);
+
+  function finishAndContinue() {
+    const m = document.getElementById("upgrade-modal");
+    if (m) m.remove();
+    document.removeEventListener("keydown", escHandler);
+    paused = false;
+
+    // DO NOT reset upgradeScreenShown here
+    // It stays true until next wave starts
+    try { requestAnimationFrame(gameLoop); } catch(e) {}
+  }
+
+  refreshBlocks();
 }
 
 // --- Pixel-art rendering for canvas ---
@@ -184,6 +459,9 @@ window.updateWaveDisplay = updateWaveDisplay;
 window.loadGameData = loadGameData;
 window.resetGame = resetGame;
 window.endGame = endGame;
+window.recalcPlayerStats = recalcPlayerStats;
+window.onUpgradeApplied = onUpgradeApplied;
+window.openUpgradeScreen = openUpgradeScreen;
 
 // --- Music & SFX Toggles ---
 const musicToggle = document.getElementById("musicToggle");
@@ -218,6 +496,8 @@ async function startGame() {
   document.getElementById("menu").style.display = "none";
   document.getElementById("settings").style.display = "none";
   document.getElementById("gameOver").style.display = "none";
+  const finisher = document.getElementById("finisher-canvas");
+  if (finisher) finisher.style.display = "none";
 
   playSelect();
   if (musicEnabled) {
@@ -229,11 +509,30 @@ async function startGame() {
     }
   }
 
-  loadGameData();
+  await loadGameData();
   resetGame();
   gameRunning = true;
   updateHealthBar();
   updateWaveDisplay();
+  initPowerupHUD();
+
+  // Start first wave BEFORE running the gameLoop so checkWaveClear does not auto-advance.
+  // This prevents the "jump to wave 2" behavior right after starting.
+  startWave(0);
+
+  // Remove old intervals
+  clearInterval(enemyInterval);
+  clearInterval(shootInterval);
+
+  // Enemy spawn handled by wave system
+  if (controlMode === "drag") shootInterval = setInterval(autoShoot, 400);
+
+  await loadGameData();
+  resetGame();
+  gameRunning = true;
+  updateHealthBar();
+  updateWaveDisplay();
+  updatePowerupHUD()
   gameLoop();
   // Remove old intervals
   clearInterval(enemyInterval);
@@ -244,48 +543,111 @@ async function startGame() {
   if (controlMode === "drag") shootInterval = setInterval(autoShoot, 400);
 }
 
+// --- Settings Navigation System ---
+
+// Open Settings Menu
 function openSettings() {
   document.getElementById("menu").style.display = "none";
   document.getElementById("settings").style.display = "flex";
+
+  // Hide sub-sections initially
+  hideAllSections();
+  showMainButtons();
+
   playSelect();
 }
 
-function openAudio() {
-  document.getElementById("audioSection").style.display = "flex";
-  document.getElementById("controlSetting").style.display = "none";
-  document.getElementById("audioSetting").style.display = "none";
-  document.getElementById("close-setting").style.display = "none";
-  document.getElementById("howToPlay").style.display = "none";
-  playSelect();
-}
-
-function backAudio () {
-  document.getElementById("audioSection").style.display = "none";
-  document.getElementById("controlSetting").style.display = "flex";
-  document.getElementById("audioSetting").style.display = "flex";
-  document.getElementById("close-setting").style.display = "flex";
-  document.getElementById("controlSection").style.display = "none";
-  document.getElementById("howToPlay").style.display = "flex";
-  playSelect();
-}
-
-function openControl() {
-  document.getElementById("controlSection").style.display = "flex";
-  document.getElementById("audioSetting").style.display = "none";
-  document.getElementById("controlSetting").style.display = "none";
-  document.getElementById("close-setting").style.display = "none";
-  document.getElementById("howToPlay").style.display = "none";
-  playSelect();
-
-}
-
+// Close Settings (back to main menu)
 function closeSettings() {
   document.getElementById("settings").style.display = "none";
   document.getElementById("menu").style.display = "flex";
-  document.getElementById("howToPlay").style.display = "flex";
   playSelect();
 }
 
+// --- Audio ---
+function openAudio() {
+  hideMainButtons();
+  document.getElementById("audioSection").style.display = "flex";
+  document.getElementById("creditSetting").style.display = "none";
+  playSelect();
+}
+
+function backAudio() {
+  document.getElementById("audioSection").style.display = "none";
+  document.getElementById("creditSetting").style.display = "flex";
+  showMainButtons();
+  playSelect();
+}
+
+// --- Controls ---
+function openControl() {
+  hideMainButtons();
+  document.getElementById("controlSection").style.display = "flex";
+  document.getElementById("creditSetting").style.display = "none";
+  playSelect();
+}
+
+function backControl() {
+  document.getElementById("controlSection").style.display = "none";
+  document.getElementById("creditSetting").style.display = "flex";
+  showMainButtons();
+  playSelect();
+}
+
+// Sub-control pages
+function openControlType() {
+  document.getElementById("controlContent").innerHTML = "<p>Choose: PC / Mobile (todo).</p>";
+  playSelect();
+}
+
+function openKeybind() {
+  document.getElementById("controlContent").innerHTML = "<p>Keybinding options (todo).</p>";
+  playSelect();
+}
+
+function openHelp() {
+  document.getElementById("controlContent").innerHTML = "<p>Help text goes here.</p>";
+  playSelect();
+}
+
+// --- Credits ---
+function openCredit() {
+  hideMainButtons();
+  document.getElementById("creditSection").style.display = "flex";
+  document.getElementById("creditSetting").style.display = "none";
+  playSelect();
+}
+
+function backCredit() {
+  document.getElementById("creditSection").style.display = "none";
+  document.getElementById("creditSetting").style.display = "flex";
+  showMainButtons();
+  playSelect();
+}
+
+// --- Utility Helpers ---
+function hideAllSections() {
+  ["audioSection", "controlSection", "creditSection"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+}
+
+function hideMainButtons() {
+  ["audioSetting", "controlSetting", "howToPlay", "close-setting"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+}
+
+function showMainButtons() {
+  ["audioSetting", "controlSetting", "howToPlay", "close-setting"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "flex";
+  });
+}
+
+// Quit game (close window)
 function quitGame() {
   playSelect();
   window.close();
@@ -293,6 +655,22 @@ function quitGame() {
 
 // Ensure the wave starts from 0 when the game begins
 function resetGame() {
+  if (waveClearTimeout) {
+    clearTimeout(waveClearTimeout);
+    waveClearTimeout = null;
+  }
+
+  // Reset upgrades on full reset (if desired)
+  player.upgrades = {
+    damage: 0,
+    health: 0,
+    speed: 0,
+    magazine: 0,
+    knockback: 0
+  };
+
+  recalcPlayerStats();
+
   player.x = canvas.width / 2 - player.width / 2;
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
@@ -300,6 +678,7 @@ function resetGame() {
   player.reserveAmmo = 1500;
   player.stamina = player.maxStamina;
   player.sprinting = false;
+
   updateAmmoDisplay();
   updateStaminaBar();
   bullets = [];
@@ -308,7 +687,8 @@ function resetGame() {
   scoreDisplay.textContent = "Score: 0";
   updateHealthBar();
   updateAmmoDisplay();
-  currentWave = -1; // Set to -1 so the first wave starts as 0
+
+  currentWave = -1;
   updateWaveDisplay();
 }
 
@@ -325,7 +705,11 @@ function backToMenu() {
   hidePauseOverlay();
   document.getElementById("gameOver").style.display = "none";
   document.getElementById("menu").style.display = "flex";
-  showMenuBackground(); // Show menu background when returning to menu
+  showMenuBackground();
+
+  const finisher = document.getElementById("finisher-canvas");
+  if (finisher) finisher.style.display = "block";
+
   playSelect();
 }
 
@@ -339,6 +723,12 @@ window.closeSettings = closeSettings;
 window.quitGame = quitGame;
 window.restartGame = restartGame;
 window.backToMenu = backToMenu;
+window.backControl = backControl;
+window.openCredit = openCredit;
+window.backCredit = backCredit;
+window.openControlType = openControlType;
+window.openKeybind = openKeybind;
+window.openHelp = openHelp;
 
 // --- Custom Key Setup ---
 function updateKeyInputs() {
@@ -620,9 +1010,7 @@ function updateAmmoDisplay() {
 
 // Ensure bullet creation logic uses the player's current position
 function shootBullet(targetX, targetY, isWorldCoords = false) {
-  if (!gameRunning || player.ammo <= 0 || isReloading) {
-    return;
-  }
+  if (!gameRunning || player.ammo <= 0 || isReloading) return;
 
   player.ammo--;
   updateAmmoDisplay();
@@ -630,36 +1018,29 @@ function shootBullet(targetX, targetY, isWorldCoords = false) {
   let cx = player.x + player.width / 2;
   let cy = player.y + player.height / 2;
   let speed = 7;
-  let dx = 0, dy = 0;
 
-  if (typeof targetX === "number" && typeof targetY === "number") {
-    let worldX, worldY;
-    if (isWorldCoords) {
-      worldX = targetX;
-      worldY = targetY;
-    } else {
-      worldX = targetX / zoom + camera.x;
-      worldY = targetY / zoom + camera.y;
-    }
+  let worldX = targetX / zoom + camera.x;
+  let worldY = targetY / zoom + camera.y;
+  let angle = Math.atan2(worldY - cy, worldX - cx);
 
-    let angle = Math.atan2(worldY - cy, worldX - cx);
-    dx = Math.cos(angle) * speed;
-    dy = Math.sin(angle) * speed;
-  } else {
-    dx = (lastDirection.dx || 1) * speed;
-    dy = (lastDirection.dy || 0) * speed;
-  }
-
-  const newBullet = {
-    x: cx,
-    y: cy,
-    dx: dx,
-    dy: dy,
-    width: 8,
-    height: 8,
+  const fireBullet = (ang) => {
+    bullets.push({
+      x: cx, y: cy,
+      dx: Math.cos(ang) * speed,
+      dy: Math.sin(ang) * speed,
+      width: 8, height: 8,
+      damage: getPlayerDamage(),
+      color: player.doubleDamage ? "orange" : "yellow"
+    });
   };
 
-  bullets.push(newBullet);
+  if (player.tripleShot) {
+    fireBullet(angle - 0.25); // ~ -15°
+    fireBullet(angle);
+    fireBullet(angle + 0.25); // ~ +15°
+  } else {
+    fireBullet(angle);
+  }
 
   if (sfxEnabled) {
     shootSound.currentTime = 0;
@@ -692,6 +1073,15 @@ function endGame(victory = false) {
   document.getElementById("gameOver").style.display = "flex";
   backgroundMusic.pause();
   backgroundMusic.currentTime = 0;
+
+  if (sfxEnabled) {
+    if (victory) {
+      victorySound.currentTime = 0;
+      victorySound.play();
+    } else {
+      gameOverSound.currentTime = 0;
+      gameOverSound.play();
+    }}
 }
 
 // --- Control Mode Highlight & Export for HTML ---
@@ -725,6 +1115,7 @@ function showPauseOverlay() {
   // Only show pause overlay if gameRunning is true and overlays are hidden
   if (!gameRunning) return;
   // Don't show if menu, settings, or gameOver is visible
+
   if (
     document.getElementById("menu").style.display !== "none" ||
     document.getElementById("settings").style.display !== "none" ||
@@ -927,6 +1318,7 @@ function gameLoop() {
   updateStaminaBar();
 
   updatePlayerMovement(); // Call movement logic
+  updateHealthBar(); // Update health bar
   updateBullets(); // Update bullet positions
   updateCamera(); // Update camera position
   updateLastDirection(); // Update last movement direction
@@ -954,7 +1346,9 @@ function gameLoop() {
     { value: score },
     scoreDisplay,
     zombiesData,
-    canvas
+    canvas,
+    hitHurt,
+    player,
   );
   score = parseInt(scoreDisplay.textContent.replace(/\D/g, "")) || 0;
 
@@ -982,12 +1376,13 @@ function gameLoop() {
   );
 
   // Draw bullets
-  ctx.fillStyle = "yellow";
-  bullets.forEach(b => ctx.fillRect(
+  bullets.forEach(b => {
+  ctx.fillStyle = b.color || "yellow";
+  ctx.fillRect(
     Math.round(b.x - b.width / 2 - camera.x),
     Math.round(b.y - b.height / 2 - camera.y),
     b.width, b.height
-  ));
+  )});
 
   // Draw enemies
   drawEnemies(ctx, camera, 0.6);
@@ -996,7 +1391,7 @@ function gameLoop() {
   drawProjectiles(ctx, camera);
 
   // Draw powerups
-  drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, selectSound, undefined, camera);
+  drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, powerUpSound, undefined, camera);
 
   ctx.restore();
 
@@ -1004,6 +1399,8 @@ function gameLoop() {
   checkWaveClear();
 
   autoReload(); // Check for auto-reloading
+
+  updatePowerupHUD();
 
   requestAnimationFrame(gameLoop);
 }
@@ -1031,7 +1428,7 @@ menuBackground.style.top = "0";
 menuBackground.style.left = "0";
 menuBackground.style.width = "100%";
 menuBackground.style.height = "100%";
-menuBackground.style.zIndex = "1000";
+menuBackground.style.zIndex = "1555";
 menuBackground.style.display = "block"; // show menu background initially
 document.body.appendChild(menuBackground);
 
@@ -1047,6 +1444,7 @@ function hideMenuBackground() {
 window.addEventListener("DOMContentLoaded", () => {
   setupCustomKeyInputs();
   setControl(controlMode);
+  recalcPlayerStats();
   updateHealthBar();
   updateWaveDisplay();
   updateAmmoDisplay();
@@ -1056,20 +1454,22 @@ window.addEventListener("DOMContentLoaded", () => {
 // Define the checkWaveClear function
 function checkWaveClear() {
   if (!waveSpawning && enemies.length === 0) {
+    if (!gameRunning) return;
     if (waveClearTimeout) return;
     waveClearTimeout = setTimeout(() => {
       waveClearTimeout = null;
-      if (waves[currentWave + 1]) {
+
+      if ((currentWave + 1) % 3 === 0 && !upgradeScreenShown) {
+        openUpgradeScreen();
+        upgradeScreenShown = true; // mark as shown
+      } else if (waves[currentWave + 1]) {
+        // wave continues -> reset upgradeScreenShown here, not in finishAndContinue
+        upgradeScreenShown = false;
         startWave(currentWave + 1);
       } else {
-        // All waves done, player wins
         endGame(true);
       }
-    }, 1200); // Short delay before next wave or win
-  }
-  if (enemies.length > 0 && waveClearTimeout) {
-    clearTimeout(waveClearTimeout);
-    waveClearTimeout = null;
+    }, 1200);
   }
 }
 
@@ -1123,6 +1523,9 @@ const ASSETS_TO_CACHE = [
   'src/assets/sound/explosion.wav',
   'src/assets/sound/laserShoot.wav',
   '/src/assets/sound/reload-gun.mp3',
+  'src/assets/sound/powerup.wav',
+  'src/assets/sound/Apocalypse - SYBS.mp3',
+  'src/assets/sound/hit-hurt.wav',
   'data/zombies.json',
   'data/wave.json'
 ];

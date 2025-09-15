@@ -11,7 +11,7 @@ export function resetEnemies() {
   // No need to clear timers here, handled in enemyAbility.js
 }
 
-export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
+export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null, e) {
   const zData = zombiesData[type] || zombiesData["basic"];
   let size = zData.size || 40;
   let spawnX = x !== null ? x : Math.random() * (canvasWidth - size);
@@ -25,7 +25,8 @@ export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
     health: zData.health,
     maxHealth: zData.health,
     color: zData.color || "red",
-    type
+    type,
+    hitFlash: 0
   });
 }
 
@@ -99,16 +100,40 @@ export function updateProjectiles(canvas) {
   }
 }
 
+// Linear interpolation helper
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
 export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1) {
   for (let e of enemies) {
-    ctx.fillStyle = e.color || "red";
+    ctx.save();
+
+    // Target size (normal or hit-expanded)
+    const targetW = e.width * scale * (e.hitFlash > 0 ? 1.3 : 1);
+    const targetH = e.height * scale * (e.hitFlash > 0 ? 1.3 : 1);
+
+    // Smoothly interpolate current size towards target
+    e._drawWidth = lerp(e._drawWidth || e.width * scale, targetW, 0.2);
+    e._drawHeight = lerp(e._drawHeight || e.height * scale, targetH, 0.2);
+
+    // Flash color
+    const color = e.hitFlash > 0 ? "white" : e.color || "red";
+
+    // Center adjustment
+    const offsetX = (e._drawWidth - e.width * scale) / 2;
+    const offsetY = (e._drawHeight - e.height * scale) / 2;
+
+    // Draw enemy
+    ctx.fillStyle = color;
     ctx.fillRect(
-      e.x - camera.x,
-      e.y - camera.y,
-      e.width * scale,
-      e.height * scale
+      e.x - camera.x - offsetX,
+      e.y - camera.y - offsetY,
+      e._drawWidth,
+      e._drawHeight
     );
-    // Draw enemy health bar
+
+    // Draw health bar
     if (e.maxHealth > 1) {
       ctx.fillStyle = "#222";
       ctx.fillRect(
@@ -125,8 +150,14 @@ export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1) {
         6
       );
     }
+
+    // Countdown hitFlash
+    if (e.hitFlash > 0) e.hitFlash--;
+
+    ctx.restore();
   }
 }
+
 
 export function drawProjectiles(ctx, camera = { x: 0, y: 0 }) {
   for (let p of projectiles) {
@@ -135,7 +166,7 @@ export function drawProjectiles(ctx, camera = { x: 0, y: 0 }) {
   }
 }
 
-export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scoreObj, scoreDisplay, zombiesData, canvas) {
+export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scoreObj, scoreDisplay, zombiesData, canvas, hitHurt, player) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     let e = enemies[i];
     for (let j = bullets.length - 1; j >= 0; j--) {
@@ -149,6 +180,35 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
         // Damage enemy (use bullet damage for double damage)
         e.health -= b.damage || 1;
         bullets.splice(j, 1);
+
+        e.hitFlash = 10; // lasts ~10 frames
+
+        // Apply knockback to enemy
+        const baseKnockback = 8;
+        const knockbackBoost = 1 + (player.upgrades.knockback || 0) * 0.2;
+        const knockbackResist = e.knockbackResist || 0;
+        const finalKnockback = baseKnockback * knockbackBoost * (1 - knockbackResist);
+
+        // Determine knockback direction:
+        // Prefer bullet velocity (b.dx, b.dy). If zero, fall back to vector from bullet to enemy.
+        let kdx = b.dx || 0;
+        let kdy = b.dy || 0;
+        if (Math.hypot(kdx, kdy) === 0) {
+          kdx = (e.x + e.width/2) - (b.x + (b.width||0)/2);
+          kdy = (e.y + e.height/2) - (b.y + (b.height||0)/2);
+        }
+        const klen = Math.hypot(kdx, kdy) || 1;
+        kdx /= klen;
+        kdy /= klen;
+
+        // Apply knockback (move enemy away along the normalized bullet direction)
+        e.x += kdx * finalKnockback;
+        e.y += kdy * finalKnockback;
+
+        if (sfxEnabled) {
+          hitHurt.currentTime = 0;
+          hitHurt.play();
+        }
 
         if (e.health <= 0) {
           // Spitter split ability
@@ -172,6 +232,8 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
 }
 
 export function handlePlayerCollisions(player, updateHealthBar, endGame) {
+  const now = Date.now();
+
   for (let i = enemies.length - 1; i >= 0; i--) {
     let e = enemies[i];
     if (
@@ -180,13 +242,17 @@ export function handlePlayerCollisions(player, updateHealthBar, endGame) {
       player.y < e.y + e.height &&
       player.y + player.height > e.y
     ) {
-      // Damage player
-      player.health -= 1;
-      updateHealthBar();
-      enemies.splice(i, 1);
-      if (player.health <= 0) {
-        endGame();
-        return true;
+      if (player.immune) continue; // Immune → skip damage
+
+      if (now - player.lastHitTime >= 1000) { // 1s cooldown
+        player.health -= 1;
+        player.lastHitTime = now;
+        updateHealthBar();
+
+        if (player.health <= 0) {
+          endGame();
+          return true;
+        }
       }
     }
   }

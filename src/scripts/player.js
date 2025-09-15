@@ -1,11 +1,20 @@
 // --- Player Object ---
 export let player = {
   x: 0, y: 0, width: 40, height: 40,
-  baseSpeed: 6,
+  baseSpeed: 4,
   maxHealth: 5, health: 5,
   magazineSize: 16, ammo: 16, reserveAmmo: 256,
   stamina: 100, maxStamina: 100,
-  sprinting: false
+  sprinting: false,
+
+    // --- Upgrade stats ---
+  upgrades: {
+    damage: 0,    // +1 damage per level
+    health: 0,    // +2 max health per level
+    speed: 0,     // +0.5 speed per level
+    recoil: 0,    // reduces recoil when hit
+    knockback: 0  // increases bullet knockback on enemies
+  }
 };
 
 // --- Stamina Bar UI (bottom left) ---
