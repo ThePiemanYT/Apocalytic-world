@@ -34,8 +34,8 @@ canvas {
   pointer-events: none;
 }
 
-/* --- Menus --- */
-#menu, #settings, #gameOver {
+/* --- Main Menu + Game Over --- */
+#menu, #gameOver {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
   display: flex;
@@ -48,7 +48,55 @@ canvas {
 }
 #gameOver { display: none; }
 
-/* --- Buttons --- */
+#menu h1 {
+  margin: 6px 0 14px 0;
+  font-size: 34px;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+}
+.menu-main-buttons {
+  display:flex; flex-direction:column; gap:1.5px; align-items:center;
+}
+.menu-main-buttons button {
+  width: 260px;
+  background:#222;
+  color:#ffe066;
+  border:2px solid #ffe066;
+  padding:12px 18px;
+  border-radius:10px;
+  cursor:pointer;
+}
+.menu-main-buttons button:hover { background:#333; transform:scale(1.05); }
+.menu-main-buttons button:active { transform:scale(0.95); }
+
+/* small subtitle under version */
+#menu .subtitle {
+  font-size:12px;
+  color:#ffd166;
+  margin-top:8px;
+}
+
+/* Version label bottom-right of screen */
+#versionLabel {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 2005;
+  color: #fff;
+  font-size: 14px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+  pointer-events: none;
+}
+
+#menu1 {
+  display: flex;
+  flex-direction: column;  /* stack elements vertically */
+  align-items: center;     /* center horizontally */
+  justify-content: center; /* optional, center vertically */
+  gap: 2.5px;               /* spacing between items */
+}
+
+/* --- Buttons (global style) --- */
 button {
   font-family: "Press Start 2P";
   border: none;
@@ -56,12 +104,7 @@ button {
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease;
 }
-
-/* --- Menu Buttons --- */
-#menu button,
-#settings button,
-.menuPanel button,
-#gameOver button {
+#menu button, #gameOver button {
   background: #222;
   color: #ffe066;
   border: 2px solid #ffe066;
@@ -69,49 +112,193 @@ button {
   font-size: 18px;
   margin: 10px 0;
 }
-#menu button:hover,
-#settings button:hover,
-.menuPanel button:hover,
-#gameOver button:hover {
+#menu button:hover, #gameOver button:hover {
   background: #333;
   transform: scale(1.05);
 }
-#menu button:active,
-#settings button:active,
-.menuPanel button:active,
-#gameOver button:active {
-  transform: scale(0.95);
-}
 
-/* --- Special Highlight (fullscreen active) --- */
-#fullscreenBtn.fullscreen-active {
-  background: yellow;
-  color: #222;
-}
-
-/* --- Mobile Controls --- */
-#controls {
+/* --- Menu Panels (Settings, Audio, Control, About, etc.) --- */
+.menuPanel {
+  display: none;
   position: absolute;
-  bottom: 20px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  flex-direction: column;
+  align-items: center;
+  background: rgba(20,20,20,0.92);
+  border-radius: 12px;
+  padding: 20px;
+  z-index: 2000;
+  min-width: 320px;
+  max-width: 90%;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+  animation: fadeIn 0.3s ease;
+}
+.menuPanel.open { display: flex; animation: panelPop 160ms ease-out; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, -48%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+/* Panel header + scroll area */
+.panelHeader {
+  font-size: 20px;
+  color: #ffe066;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.panelBody {
   width: 100%;
   display: flex;
-  justify-content: space-between;
-  padding: 0 30px;
-  z-index: 1500;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
-#controls button {
-  width: 70px;
-  height: 70px;
-  font-size: 28px;
-  border-radius: 50%;
-  background: #555;
+
+.panel-animate-in {
+  animation: fadeIn 0.25s ease;
 }
+
+/* --- Control Grid (2x2) --- */
+.controlGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  width: 100%;
+  max-width: 520px;
+  margin: 6px auto 12px auto;
+}
+.controlGrid button {
+  background:#222;
+  color:#ffe066;
+  border:2px solid #ffd166;
+  padding:12px;
+  border-radius:10px;
+  font-size:14px;
+  text-align:center;
+  white-space:normal;
+  cursor:pointer;
+}
+.controlGrid button:hover { background:#333; transform: scale(1.03); }
+
+/* Back button centered */
+.controlBack {
+  display:block;
+  margin: 12px auto 0 auto;
+  background:#222;
+  color:#ffe066;
+  border:2px solid #ffd166;
+  padding:10px 18px;
+  border-radius:10px;
+  font-size:14px;
+  cursor:pointer;
+}
+.controlBack:hover { background:#333; }
+
+/* --- About Grid (2x2) --- */
+.aboutGrid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  max-width:520px;
+  margin:0 auto;
+}
+.aboutGrid .aboutCard {
+  padding:12px;
+  background:#111;
+  border-radius:8px;
+  border:1px solid rgba(255,210,102,0.06);
+  font-size: 12px;
+  color: #ddd;
+}
+
+/* --- Achievements Placeholder --- */
+.achievementsList {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-width:520px;
+  margin:0 auto;
+}
+.achievementBox {
+  background:#0b0b0b;
+  border:1px dashed rgba(255,210,102,0.08);
+  padding:10px;
+  border-radius:8px;
+  color:#ddd;
+}
+
+/* --- Audio Toggles --- */
+#audioToggles {
+  margin: 10px 0 18px 0;
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  align-items: center;
+}
+#audioToggles label {
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #222;
+  padding: 8px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+#audioToggles input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: #4CAF50;
+}
+
+/* --- Custom Keys --- */
+#customKeys {
+  margin-top: 16px;
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+#customKeys label {
+  font-size: 14px;
+  background: #222;
+  padding: 6px 14px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#customKeys input[type="text"] {
+  width: 32px;
+  font-size: 16px;
+  text-align: center;
+  border: 1px solid #4CAF50;
+  border-radius: 4px;
+  background: #181818;
+  color: #ffe066;
+  margin-left: 4px;
+  outline: none;
+  cursor: pointer;
+}
+#resetKeysBtn {
+  padding: 8px 18px;
+  font-size: 14px;
+  margin-left: 10px;
+  border-radius: 6px;
+  background: #444;
+  color: #ffe066;
+  border: none;
+  cursor: pointer;
+}
+#resetKeysBtn:hover { background: #ffe066; color: #222; }
 
 /* --- HUD --- */
 #score {
   position: absolute;
   top: 15px;
-  left: 120px;
+  left: 140px;
   transform: translateX(-50%);
   font-size: 24px;
   font-weight: bold;
@@ -151,254 +338,123 @@ button {
   color: #ffe066;
   border: 2px solid #ffe066;
   font-size: 16px;
-}
-#pauseBtn:hover {
-  background: #ffe066;
-  color: #222;
-}
-
-/* --- Audio & Control Settings --- */
-#audioControlSection, #audioSection, #controlSection {
-  margin: 18px 0;
-  padding: 18px 32px;
-  background: #181818;
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: auto;
-  max-width: 90%;
-}
-#audioControlSection h3,
-#audioSection h3,
-#controlSection h3 {
-  margin: 0 0 12px 0;
-  font-size: 18px;
-  color: #ffe066;
-  letter-spacing: 1px;
-}
-
-/* --- Audio Toggles --- */
-#audioToggles {
-  margin: 10px 0 18px 0;
-  display: flex;
-  gap: 30px;
-  justify-content: center;
-  align-items: center;
-}
-#audioToggles label {
-  font-size: 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #222;
-  padding: 8px 18px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-#audioToggles input[type="checkbox"] {
-  width: 22px;
-  height: 22px;
-  accent-color: #4CAF50;
-}
-
-/* --- Control Grid --- */
-.controlGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;  /* two equal columns */
-  gap: 12px;                       /* space between buttons */
-  width: 100%;
-  max-width: 360px;                /* keep grid inside panel */
-  margin: 0 auto 16px auto;        /* space at bottom before Back button */
-}
-
-.controlGrid button {
-  background: #222;
-  color: #ffe066;
-  border: 2px solid #ffe066;
-  padding: 12px;                   /* tighter padding so they don’t leak */
-  font-size: 14px;                 /* readable but compact */
-  border-radius: 6px;
-  text-align: center;
-  word-break: break-word;          /* long labels wrap if needed */
-  white-space: normal;
-  transition: transform 0.2s ease, background 0.2s ease;
-}
-
-.controlGrid button:hover {
-  background: #333;
-  transform: scale(1.05);
-}
-
-/* Back button centered under the grid */
-.controlBack {
-  margin-top: 10px;
-  background: #222;
-  color: #ffe066;
-  border: 2px solid #ffe066;
   padding: 10px 20px;
+  border-radius: 8px;
+}
+#pauseBtn:hover { background: #ffe066; color: #222; }
+
+/* --- Mobile Controls --- */
+#controls {
+  position: absolute;
+  bottom: 20px;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 30px;
+  z-index: 1500;
+}
+#controls button {
+  width: 70px;
+  height: 70px;
+  font-size: 28px;
+  border-radius: 50%;
+  background: #555;
+}
+
+/* --- Fullscreen Active --- */
+.fullscreen-active {
+  background: #ffd166 !important;
+  color: #222 !important;
+  border-color: #c9a702 !important;
+}
+
+/* --- Scrollbar (inside panels) --- */
+.menuPanel .panelBody::-webkit-scrollbar { width:8px; }
+.menuPanel .panelBody::-webkit-scrollbar-thumb {
+  background: rgba(255,209,102,0.12);
+  border-radius:6px;
+}
+
+/* --- Responsive tweaks --- */
+@media (max-width:600px){
+  .menuPanel { width: 92%; max-height:84vh; padding:14px; }
+  #menu { width: 92%; }
+  .controlGrid { gap:10px; }
+}
+
+/* Help layout container */
+.helpLayout,
+.aboutLayout {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  flex: 1;              /* take full height of panel */
+  min-height: 300px;
+}
+
+/* Sidebar: buttons A–F */
+.helpTabs,
+.aboutTabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #222;
+  padding: 10px;
+  border-radius: 8px;
+  align-self: stretch;   /* match content height */
+}
+
+/* Style for each tab button */
+.helpTabs button {
+  background: #222;
+  color: #ffe066;
+  border: 2px solid #ffd166;
+  padding: 10px;
   font-size: 14px;
   border-radius: 6px;
   cursor: pointer;
+  width: 60px;
+  text-align: center;
+  transition: background 0.2s;
 }
-.controlBack:hover {
+
+.helpTabs button:hover {
   background: #333;
 }
 
-/* --- Custom Keys --- */
-#customKeys {
-  margin-top: 16px;
-  display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  justify-content: center;
+.helpTabs button.active {
+  background: #ffd166;
+  color: #111;
 }
-#customKeys label {
-  font-size: 16px;
-  background: #222;
-  padding: 6px 14px;
+
+#helpPanel.menuPanel,
+#aboutPanel.menuPanel {
+  min-width: 600px;
+  max-width: 80vw;
+  max-height: 80vh;   /* more breathing room */
+  min-height: 400px;  /* guarantee some vertical size */
+}
+
+/* Content area */
+.helpContent,
+.aboutContent {
+  flex: 1;
+  background: #070707;
   border-radius: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-#customKeys input[type="text"] {
-  width: 32px;
-  font-size: 18px;
-  text-align: center;
-  border: 1px solid #4CAF50;
-  border-radius: 4px;
-  background: #181818;
-  color: #ffe066;
-  margin-left: 4px;
-  outline: none;
-  cursor: pointer;
-}
-#resetKeysBtn {
-  padding: 8px 18px;
-  font-size: 14px;
-  margin-left: 10px;
-  border-radius: 6px;
-  background: #444;
-  color: #ffe066;
-  border: none;
-  cursor: pointer;
-}
-#resetKeysBtn:hover {
-  background: #ffe066;
-  color: #222;
-}
-
-/* --- Version Label --- */
-#versionLabel {
-  position: absolute;
-  bottom: 10px;
-  right: 14px;
-  font-size: 14px;
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-/* --- Credit Section --- */
-#creditSection {
-  margin: 18px 0;
-  padding: 18px 32px;
-  background: #181818;
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 340px;
-  max-height: 70vh;
+  padding: 14px;
   overflow-y: auto;
-}
-#creditSection h3 {
-  margin: 0 0 12px 0;
-  font-size: 18px;
-  color: #ffe066;
-}
-
-/* --- Menu Panel --- */
-.menuPanel {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 600px;
-  max-width: 90%;
-  max-height: 80%;
-  background: rgba(0, 0, 0, 0.92);
-  color: #ffe066;
-  border: 3px solid #ffe066;
-  border-radius: 12px;
-  padding: 20px;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  overflow-y: auto;
-  z-index: 2000;
-}
-.menuPanel h3 {
-  margin: 10px 0 20px 0;
-  font-size: 18px;
-  color: #ffd166;
+  font-family: "Press Start 2P", sans-serif;
+  font-size: 13px;
+  color: #ddd;
+  white-space: pre-line;  line-height: 1.4;
+  min-height: 100%;
+  max-height: 65vh;      /* scroll if too tall */
 }
 
-/* --- Audio & Control Settings --- */
-#audioControlSection,
-#audioSection,
-#controlSection,
-#creditSection {
-  margin: 18px 0;
-  padding: 18px 32px;
-  background: rgba(0, 0, 0, 0.92); /* match menuPanel */
-  border: 2px solid #ffe066;
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 340px;
-  max-width: 90%;
-  color: #ffe066;
+.helpContent::-webkit-scrollbar {
+  width: 8px;
 }
-
-/* Headings inside sections */
-#audioSection h3,
-#controlSection h3,
-#creditSection h3 {
-  margin: 0 0 12px 0;
-  font-size: 18px;
-  color: #ffe066;
-  letter-spacing: 1px;
-}
-
-/* --- Settings Popup Animation --- */
-@keyframes settingsPop {
-  0% {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-/* Apply animation when opening settings */
-#settings.show {
-  animation: settingsPop 0.25s ease forwards;
-}
-
-#keybindSection input[type="text"] {
-  width: 40px;
-  font-size: 16px;
-  text-align: center;
-  border: 1px solid #505bff;
+.helpContent::-webkit-scrollbar-thumb {
+  background: rgba(255,209,102,0.3);
   border-radius: 4px;
-  background: #181818;
-  color: #ffe066;
-  margin-left: 4px;
-  outline: none;
-  cursor: pointer;
-  
 }

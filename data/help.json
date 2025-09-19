@@ -1,0 +1,26 @@
+{
+  "1": {
+    "title": "Overview",
+    "content": "Cube Shooter is a fast-paced survival game where your goal is to last as long as possible against endless waves of enemies.\n\nEnemies spawn in increasingly larger numbers and with tougher stats as waves progress. To keep up, you’ll need to use your ammo wisely, collect powerups that drop in battle, and upgrade your abilities after every few waves.\n\nThe core loop is simple but challenging: Survive → Score → Upgrade → Repeat. The further you go, the more intense it becomes."
+  },
+  "2": {
+    "title": "Controls",
+    "content": "Keyboard & Mouse:\n• Movement — W, A, S, D\n• Aim — Mouse\n• Shoot — Left Mouse Button\n• Reload — R\n• Sprint — Hold Shift\n\nMobile:\n• Virtual joystick for movement\n• Tap and drag to aim\n• Auto-shoot available in joystick mode\n\nTip: Good aim and movement are equally important. Keep strafing while firing to avoid damage."
+  },
+  "3": {
+    "title": "Powerups",
+    "content": "Powerups are temporary bonuses that can turn the tide of battle. They drop randomly from defeated enemies and vanish after a short time if not picked up.\n\nAvailable powerups:\n• HP Recovery — Restores part of your health bar.\n• Double Damage — Doubles bullet damage for a short duration.\n• More Ammo — Instantly refills part of your magazine and reserve ammo.\n• Triple Shot — Fires three bullets in a spread instead of one.\n• Immunity — Grants temporary invincibility against all damage.\n\nPro Tip: Don’t hoard powerups — grab them when you need them most, especially Immunity before a tough wave."
+  },
+  "4": {
+    "title": "Upgrades",
+    "content": "Every 3 waves, you will enter the upgrade screen where you can choose permanent improvements for your character. These upgrades stack over time, letting you customize your playstyle.\n\nUpgrade categories:\n• Damage — Increases bullet damage.\n• Health — Boosts your max HP and slightly heals you.\n• Speed — Improves both walking and sprinting speed.\n• Magazine — Expands your ammo capacity before needing to reload.\n• Knockback — Increases enemy pushback when hit by your bullets.\n\nStrategy Tip: Don’t always pick damage first. Sometimes more health or speed is the difference between survival and defeat."
+  },
+  "5": {
+    "title": "Enemies",
+    "content": "The game features multiple enemy types, each with unique stats and behaviors. Learning their movement patterns is key to survival.\n\nCommon enemy types:\n• Basic Zombie — Slow and weak, but dangerous in groups.\n• Fast Zombie — Moves quickly and can catch you off guard.\n• Tank Zombie — High health, slow movement, deals heavy damage if it reaches you.\n• Special Variants — Some waves introduce special enemies with projectiles or unique attack styles (watch out!).\n\nHint: Don’t get surrounded. Always keep an escape path open."
+  },
+  "6": {
+    "title": "Tips",
+    "content": "• Keep moving — Staying still makes you an easy target.\n• Manage your ammo — Reload between waves or after clearing space.\n• Use powerups wisely — Don’t waste Immunity when only a few enemies are alive.\n• Prioritize threats — Take out fast enemies first before they overwhelm you.\n• Upgrade with balance — Mix offense and defense to avoid being glass-cannon fragile.\n• Learn the map — Use space to kite enemies instead of letting them box you in.\n\nRemember: The key to high scores is survival. The longer you last, the more dangerous (and rewarding) each wave becomes."
+  }
+}

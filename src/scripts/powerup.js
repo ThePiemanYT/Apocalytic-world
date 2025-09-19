@@ -183,6 +183,10 @@ export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled
   powerups.forEach(p => {
     ctx.fillStyle = p.type.color;
     ctx.fillRect(p.x - camera.x, p.y - camera.y, p.width, p.height);
+
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "black";
+    ctx.strokeRect(p.x - camera.x, p.y - camera.y, p.width, p.height);
   });
 }
 
@@ -209,4 +213,11 @@ function showPowerupMessage(msg) {
   setTimeout(() => {
     powerupMsgDiv.style.opacity = "0";
   }, 1200);
+}
+
+// Call this to clear all active powerups (e.g. on game reset)
+export function resetPowerups() {
+  for (const key in activePowerups) {
+    delete activePowerups[key]; // clear all
+  }
 }

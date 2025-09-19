@@ -8,114 +8,186 @@
   <link rel="icon" href="src/assets/image/menuScreen.png" type="image/x-icon">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
+  <!-- Game canvas -->
   <canvas id="gameCanvas"></canvas>
   <div id="score">Score: 0</div>
-  <div id="healthBarContainer">
-    <div id="healthBar"></div>
-  </div>
+  <div id="healthBarContainer"><div id="healthBar"></div></div>
   <div id="waveDisplay">Wave: 1</div>
-
-  <div id="menu">
-    <h1>Cube Shooter</h1>
-    <button onclick="startGame()">Start</button>
-    <button onclick="openSettings()">Settings</button>
-    <button onclick="quitGame()">Quit</button>
-    <div id="versionLabel">v1.0.2</div>
-  </div>  
-
   <div class="header finisher-header" style="width: 100%; height: 300px;"></div>
 
-  <div id="settings" style="display:none;">
-    <h2>Settings</h2>
-
-    <!-- AUDIO -->
-    <button onclick="openAudio()" id="audioSetting">Audio</button>
-    <div id="audioSection" style="display:none;">
-      <h3>Audio</h3>
-      <div id="audioToggles">
-        <label>
-          <input type="checkbox" id="musicToggle" checked> Music
-        </label>
-        <label>
-          <input type="checkbox" id="sfxToggle" checked> SFX
-        </label>
+  <!-- Main Menu -->
+  <div id="menu">
+    <div id="menu1">
+      <h1>Cube Shooter</h1>
+      <div class="menu-main-buttons">
+        <button onclick="startGame()">Start</button>
+        <button onclick="openPanel('settingsPanel')">Settings</button>
+        <button onclick="openPanel('achievementsPanel')">Achievements</button>
       </div>
-      <button onclick="backAudio()" class="backBtn">Back</button>
     </div>
-
-    <!-- CONTROLS -->
-    <button onclick="openControl()" id="controlSetting">Controls</button>
-    <div id="controlSection" style="display:none; flex-direction:column; align-items:center;">
-      <h3>Controls</h3>
-
-      <!-- Grid of 4 main buttons -->
-      <div class="controlGrid">
-        <button onclick="openControlType()" id="controlTypeBtn">Control Type</button>
-        <button onclick="openKeybind()" id="keybindBtn">Keybinds</button>
-        <button onclick="toggleFullscreen()" id="fullscreenBtn">Toggle Fullscreen</button>
-        <button onclick="openHelp()" id="helpBtn">Help</button>
-      </div>
-
-      <!-- Back button -->
-      <button onclick="backControl()" class="backBtn" style="margin-top:18px;">Back</button>
-    </div>
-
-    <!-- CONTROL TYPE MENU -->
-    <div id="controlTypeSection" class="menuPanel">
-      <h3>Control Type</h3>
-      <button onclick="setControl('buttons')" id="buttonModeBtn">Buttons</button>
-      <button onclick="setControl('joystick')" id="joystickModeBtn">Joystick</button>
-      <p style="color:#aaa; margin-top:12px;">Choose your preferred input method.</p>
-      <button onclick="backControlType()" class="backBtn">Back</button>
-    </div>
-
-    <!-- KEYBIND MENU -->
-    <div id="keybindSection" class="menuPanel">
-      <h3>Keybinds</h3>
-      <div style="margin: 12px 0; text-align:left;">
-        <label>Left: <input type="text" id="leftKeyInput"></label><br>
-        <label>Right: <input type="text" id="rightKeyInput"></label><br>
-        <label>Up: <input type="text" id="upKeyInput"></label><br>
-        <label>Down: <input type="text" id="downKeyInput"></label><br>
-      </div>
-      <button id="resetKeysBtn">Reset Keys</button>
-      <button onclick="backKeybind()" class="backBtn">Back</button>
-    </div>
-
-    <!-- HELP MENU -->
-    <div id="helpSection" class="menuPanel">
-      <h3>Help</h3>
-      <p style="max-width:600px; line-height:1.5;">
-        Use <b>WASD / Arrow Keys</b> to move.<br>
-        Use your mouse to aim and shoot.<br>
-        Use <b>R</b> to reload.<br>
-        Use <b>Shift</b> to sprint.<br>
-        Use <b>Esc</b> to pause/resume.<br><br>
-        Survive waves of enemies and collect powerups!
-      </p>
-      <button onclick="backHelp()" class="backBtn">Back</button>
-    </div>
-
-    <!-- CREDITS -->
-    <button onclick="openCredit()" id="creditSetting">Credits</button>
-    <div id="creditSection" style="display:none;">
-      <h3>Credits</h3>
-      <p>Game by: Piemann</p>
-      <p>Music: Apocalypse - SYBS</p>
-      <p>Assets by: Piemann</p>
-      <button onclick="backCredit()" class="backBtn">Back</button>
-    </div>
-
-    <!-- BACK -->
-    <button onclick="closeSettings()" id="close-setting">Back</button>
   </div>
 
+  <!-- Bottom-right floating version -->
+  <div id="versionLabel">Alpha v1.2.1</div>
 
+  <!-- Settings Panel -->
+  <div id="settingsPanel" class="menuPanel" inert>
+    <div class="panelHeader">Settings</div>
+    <div class="panelBody">
+      <div style="text-align:center; font-size:16px; margin-bottom:8px;">Choose a section</div>
+      <div class="controlGrid">
+        <button onclick="openPanel('controlPanel')">Controls</button>
+        <button onclick="openPanel('audioPanel')">Audio</button>
+        <button onclick="openPanel('graphicsPanel')">Graphics</button>
+        <button onclick="openPanel('accessibilityPanel')">Accessibility</button>
+        <button onclick="openPanel('helpPanel')">Help</button>
+        <button onclick="openPanel('aboutPanel')">About</button>
+      </div>
+      <div style="text-align:center; margin-top:8px;">
+        <button class="controlBack" onclick="closePanel('settingsPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Control Panel -->
+  <div id="controlPanel" class="menuPanel" inert>
+    <div class="panelHeader">Controls</div>
+    <div class="panelBody">
+      <p style="color:#ddd; font-size:13px; margin-bottom:8px;">Choose control type or remap keys.</p>
+      <div class="controlGrid">
+        <button onclick="setControl('buttons')">Keyboard</button>
+        <button onclick="setControl('joystick')">Joystick</button>
+      </div>
+      <div style="margin-top:12px; font-size:12px; color:#ddd">
+        <strong>Keybinds</strong><br>
+        <small>Click below to open remapping.</small>
+        <div style="margin-top:8px;">
+          <button onclick="openPanel('keybindPanel')" class="controlBack">Keybinds</button>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:14px;">
+        <button class="controlBack" onclick="closePanel('controlPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Panel -->
+  <div id="audioPanel" class="menuPanel" inert>
+    <div class="panelHeader">Audio</div>
+    <div class="panelBody">
+      <label><input id="menuMusicToggle" type="checkbox" checked> Music</label>
+      <label><input id="menuSfxToggle" type="checkbox" checked> SFX</label>
+      <div style="font-size:12px;color:#ddd;">Use toggles to enable/disable sounds.</div>
+      <div style="text-align:center; margin-top:12px;">
+        <button class="controlBack" onclick="closePanel('audioPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Graphics Panel -->
+  <div id="graphicsPanel" class="menuPanel" inert>
+    <div class="panelHeader">Graphics</div>
+    <div class="panelBody">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+        <div style="min-width:160px; background:#111;border-radius:8px;padding:10px;">Quality<br><small style="color:#ddd">Low / Med / High</small></div>
+        <div style="min-width:160px; background:#111;border-radius:8px;padding:10px;">Resolution<br><small style="color:#ddd">Auto / Custom</small></div>
+        <button id="fullscreenBtn" onclick="toggleFullscreen()">Toggle Fullscreen</button>
+        <div style="min-width:160px; background:#111;border-radius:8px;padding:10px;">Framerate<br><small style="color:#ddd">60 / 120 / Unlimited</small></div>
+      </div>
+      <div style="text-align:center; margin-top:12px;">
+        <button class="controlBack" onclick="closePanel('graphicsPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Accessibility Panel -->
+  <div id="accessibilityPanel" class="menuPanel" inert>
+    <div class="panelHeader">Accessibility</div>
+    <div class="panelBody">
+      <label><input type="checkbox"> Colorblind mode</label>
+      <label><input type="checkbox"> Screen shake reduction</label>
+      <label><input type="checkbox"> Captions</label>
+      <div style="font-size:12px;color:#ddd;">Text size/other toggles coming later.</div>
+      <div style="text-align:center; margin-top:12px;">
+        <button class="controlBack" onclick="closePanel('accessibilityPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keybinds Panel -->
+  <div id="keybindPanel" class="menuPanel" inert>
+    <div class="panelHeader">Keybinds</div>
+    <div class="panelBody">
+      <div style="font-size:12px;color:#ddd;margin-bottom:8px;">Click a field, then press a key.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px; max-width:520px; margin:0 auto;">
+        <label>Move Up <input id="kbUp" readonly value="W"></label>
+        <label>Move Down <input id="kbDown" readonly value="S"></label>
+        <label>Move Left <input id="kbLeft" readonly value="A"></label>
+        <label>Move Right <input id="kbRight" readonly value="D"></label>
+        <label>Shoot <input id="kbShoot" readonly value="LMB"></label>
+        <label>Dash <input id="kbDash" readonly value="Q"></label>
+      </div>
+      <div style="text-align:center; margin-top:12px;">
+        <button class="controlBack" onclick="closePanel('keybindPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help Panel -->
+  <div id="helpPanel" class="menuPanel" inert>
+    <div class="panelHeader">Help</div>
+
+    <div class="helpLayout">
+      <!-- Sidebar for A–F buttons -->
+      <div id="helpTabs" class="helpTabs"></div>
+
+      <!-- Scrollable content area -->
+      <div id="helpContent" class="helpContent"></div>
+    </div>
+
+    <div style="text-align:center;margin-top:12px;">
+      <button class="controlBack" onclick="closePanel('helpPanel')">Back</button>
+    </div>
+  </div>
+
+  <!-- Achievements Panel -->
+  <div id="achievementsPanel" class="menuPanel" inert>
+    <div class="panelHeader">Achievements</div>
+    <div class="panelBody">
+      <div class="achievementsList">
+        <div class="achievementBox">Achievement 1 — Locked</div>
+        <div class="achievementBox">Achievement 2 — Locked</div>
+      </div>
+      <div style="text-align:center; margin-top:12px;">
+        <button class="controlBack" onclick="closePanel('achievementsPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- About Panel -->
+  <div id="aboutPanel" class="menuPanel" inert>
+    <div class="panelHeader">About</div>
+
+    <div class="helpLayout">
+      <!-- Sidebar -->
+      <div id="aboutTabs" class="helpTabs"></div>
+
+      <!-- Scrollable content -->
+      <div id="aboutContent" class="helpContent"></div>
+    </div>
+
+    <div style="text-align:center;margin-top:12px;">
+      <button class="controlBack" onclick="closePanel('aboutPanel')">Back</button>
+    </div>
+  </div>
+
+  <!-- Game Over -->
   <div id="gameOver">
     <h2>Game Over</h2>
     <p id="finalScore"></p>
@@ -123,53 +195,37 @@
     <button onclick="backToMenu()">Main Menu</button>
   </div>
 
-  <button id="pauseBtn" style="position:absolute;top:18px;right:32px;font-size:22px;padding:10px 26px;">Pause</button>
+  <!-- Pause Button -->
+  <button id="pauseBtn">Pause</button>
 
+  <!-- Music -->
   <audio id="backgroundMusic" loop>
     <source src="src/assets/music/Apocalypse - SYBS.mp3" type="audio/mpeg">
+  </audio>
 
-  <!-- Use type="module" for ES module support -->
+  <!-- Scripts -->
   <script type="module" src="src/scripts/index.js"></script>
-  <script src="src/scripts/animated-background.js" type="text/javascript"></script>
-  <script type="text/javascript">
+  <script src="src/scripts/animated-background.js"></script>
+  <script>
     new FinisherHeader({
-      "count": 100,
-      "size": {
-        "min": 2,
-        "max": 8,
-        "pulse": 0.1
+      count: 100,
+      size: { min: 2, max: 8, pulse: 0.1 },
+      speed: { x: { min: 0, max: 0.4 }, y: { min: 0, max: 0.6 } },
+      colors: {
+        background: "transparent",
+        particles: ["#fbfcca","#d7f3fe","#ffd0a7","#fcd0fc","#00ffef","#edffde"]
       },
-      "speed": {
-        "x": {
-          "min": 0,
-          "max": 0.4
-        },
-        "y": {
-          "min": 0,
-          "max": 0.6
-        }
-      },
-      "colors": {
-        "background": "transparent",
-        "particles": [
-          "#fbfcca",
-          "#d7f3fe",
-          "#ffd0a7",
-          "#fcd0fc",
-          "#00ffef",
-          "#edffde"
-        ]
-      },
-      "blending": "overlay",
-      "opacity": {
-        "center": 1,
-        "edge": 0.05
-      },
-      "skew": 0,
-      "shapes": [
-        "c"
-      ]
+      blending: "overlay",
+      opacity: { center: 1, edge: 0.05 },
+      skew: 0,
+      shapes: ["c"]
     });
-</script>
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register("service-worker.js")
+        .catch(err => console.warn("SW failed:", err));
+    }
+  </script>
 </body>
 </html>

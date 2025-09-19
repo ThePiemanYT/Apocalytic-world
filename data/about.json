@@ -1,0 +1,18 @@
+{
+  "1": {
+    "title": "Overview",
+    "content": "Cube Shooter is a fast-paced survival shooter where you must outlast endless waves of enemies.\n\nThe goal is simple: survive as long as you can, rack up a high score, and challenge yourself with harder waves. Each round, enemies become faster, tougher, and appear in larger numbers. To keep up, players can collect powerups, manage their ammo, and strategically upgrade their stats between waves.\n\nWith pixel-inspired visuals, retro audio, and a growing set of mechanics, Cube Shooter aims to be both challenging and rewarding — whether you’re here for a quick run or a long session."
+  },
+  "2": {
+    "title": "Changelog",
+    "content": "Alpha v1.0.0 — Stable Version\n• First public build released\n• Basic enemies, waves, scoring system\n\nAlpha v1.1.0 — Powerup Revamp\n• Added new powerups: Triple Shot, Damage Boost\n• Improved visuals for powerup icons\n• Fixed powerup duration bug\n\nAlpha v1.2.0 — Menu Update\n• Introduced modernized main menu\n• Added Settings with audio & graphics placeholders\n• Added Help panel\n\nAlpha v1.2.1 — The Menu Update 2\n• Expanded About panel with tabs\n• Integrated Credits into About\n• Improved UI consistency between Help and About panels"
+  },
+  "3": {
+    "title": "Special Thanks",
+    "content": "Huge thanks to all testers, early players, and supporters who provided feedback!\nYour input helps make Cube Shooter better every update."
+  },
+  "4": {
+    "title": "Credits",
+    "content": "Game & Assets: Pieman\nMusic: Apocalypse - SYBS\nAdditional Feedback: Community Testers\nSpecial Thanks: Everyone who helped along the way!"
+  }
+}
