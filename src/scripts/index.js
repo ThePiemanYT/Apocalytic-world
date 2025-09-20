@@ -14,6 +14,7 @@ import {
 import { reload } from "./reload.js";
 import { spawnPowerups, drawAndHandlePowerups } from "./powerup.js";
 import { initPowerupHUD, updatePowerupHUD, activePowerups } from "./powerup.js";
+import { updateAchievement, loadAchievements } from "./achievement.js";
 
 /* =========================================================================
    DOM references + immediate UI elements that must exist early
@@ -68,10 +69,7 @@ const hitHurt = new Audio("src/assets/sound/hitHurt.wav");
 const powerUpSound = new Audio("src/assets/sound/powerUp.wav");
 const reloadSound = new Audio("src/assets/sound/reload-gun.mp3");
 const victorySound = new Audio("src/assets/sound/victory.mp3");
-victorySound.volume = 0.9;
 const gameOverSound = new Audio("src/assets/sound/game-over.mp3");
-gameOverSound.volume = 0.9;
-backgroundMusic.volume = 0.5;
 
 /* =========================================================================
    Game state — player, bullets, waves, etc.
@@ -510,6 +508,7 @@ function shootBullet(targetX, targetY, isWorldCoords = false) {
   } else fireBullet(angle);
 
   if (sfxEnabled) { shootSound.currentTime = 0; shootSound.play(); }
+  onBulletFired();
 }
 
 function updateBullets() {
@@ -632,7 +631,7 @@ function gameLoop() {
   updateCamera();
 
   // enemies, projectiles
-  updateEnemies(player, canvas, zombiesData);
+  updateEnemies(player, canvas, zombiesData, projectiles, sfxEnabled, hitHurt);
   updateProjectiles(canvas);
 
   // spawn wave enemies periodically (tick)
@@ -1130,6 +1129,151 @@ window.openPanel = openPanel;
 window.closePanel = closePanel;
 window.switchHelpTab = switchHelpTab;
 window.loadHelpData = loadHelpData;
+window.cycleControlMode = cycleControlMode;
+
+// Controls for settings panel
+let currentControl = "Keyboard"; // default mode
+const controlModes = ["Keyboard", "Mobile", "Controller"];
+
+// Cycle control modes with animation
+function cycleControlMode() {
+  const btn = document.getElementById("controlOptionsBtn");
+  const currentIndex = controlModes.indexOf(currentControl);
+  const nextIndex = (currentIndex + 1) % controlModes.length;
+  currentControl = controlModes[nextIndex];
+
+  btn.textContent = currentControl;
+  btn.classList.remove("swapText");
+  void btn.offsetWidth; // force reflow
+  btn.classList.add("swapText");
+  playSelect.currentTime = 0;
+  playSelect?.();
+}
+
+// ----------------
+// Keybind Remapping
+// ----------------
+const defaultKeybinds = {
+  up: "W",
+  down: "S",
+  left: "A",
+  right: "D",
+  shoot: "LMB",
+  dash: "Q",
+};
+let keybinds = { ...defaultKeybinds };
+
+document.querySelectorAll(".keyBtn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const action = btn.dataset.action;
+    btn.textContent = "Press any key...";
+    btn.classList.add("listening");
+
+    const listener = (e) => {
+      e.preventDefault();
+      let key = e.key.toUpperCase();
+      if (key === " ") key = "SPACE";
+
+      keybinds[action] = key;
+      btn.textContent = key;
+      btn.classList.remove("listening");
+
+      document.removeEventListener("keydown", listener);
+    };
+
+    document.addEventListener("keydown", listener);
+  });
+});
+
+// Audio/SFX sliders
+const musicSlider = document.getElementById("musicSlider");
+const sfxSlider = document.getElementById("sfxSlider");
+
+// Apply saved settings if they exist
+if (localStorage.getItem("musicVolume")) {
+  musicVolume = parseFloat(localStorage.getItem("musicVolume"));
+  musicSlider.value = musicVolume * 100;
+}
+if (localStorage.getItem("sfxVolume")) {
+  sfxVolume = parseFloat(localStorage.getItem("sfxVolume"));
+  sfxSlider.value = sfxVolume * 100;
+}
+
+// Update music volume
+musicSlider.addEventListener("input", () => {
+  musicVolume = musicSlider.value / 100;
+  backgroundMusic.volume = musicVolume;
+  localStorage.setItem("musicVolume", musicVolume);
+});
+
+// Update SFX volume
+sfxSlider.addEventListener("input", () => {
+  sfxVolume = sfxSlider.value / 100;
+  [selectSound, explosionSound, shootSound, hitHurt, powerUpSound, reloadSound, victorySound, gameOverSound]
+    .forEach(sfx => sfx.volume = sfxVolume);
+  localStorage.setItem("sfxVolume", sfxVolume);
+});
+
+// Set initial volumes
+backgroundMusic.volume = musicVolume;
+[selectSound, explosionSound, shootSound, hitHurt, powerUpSound, reloadSound, victorySound, gameOverSound]
+  .forEach(sfx => sfx.volume = sfxVolume);
+
+function updateSliderTooltip(slider) {
+  const val = slider.value;
+  const percent = (val - slider.min) / (slider.max - slider.min);
+  slider.setAttribute("data-value", val);
+
+  // Position tooltip above thumb
+  slider.style.setProperty("--thumb-x", `${percent * 100}%`);
+}
+
+// Apply on both sliders
+[musicSlider, sfxSlider].forEach(slider => {
+  updateSliderTooltip(slider); // initial value
+  slider.addEventListener("input", () => updateSliderTooltip(slider));
+});
+
+/* Graphics quality selector */
+// Placeholder options
+const qualityOptions = ["Low", "Medium", "High"];
+const resolutionOptions = ["Auto", "720p", "1080p"];
+const framerateOptions = ["60", "45", "30"];
+
+let qualityIndex = 0;
+let resolutionIndex = 0;
+let framerateIndex = 0;
+
+function cycleGraphicsOption(buttonId, options, indexRef) {
+  indexRef.value = (indexRef.value + 1) % options.length;
+  document.getElementById(buttonId).textContent =
+    buttonId.charAt(0).toUpperCase() + buttonId.slice(1).replace("Btn", "") +
+    ": " + options[indexRef.value];
+}
+
+// Attach events
+document.getElementById("qualityBtn").onclick = () =>
+  cycleGraphicsOption("qualityBtn", qualityOptions, { value: qualityIndex = (qualityIndex + 1) % qualityOptions.length, get value() { return qualityIndex; }, set value(v) { qualityIndex = v; } });
+
+document.getElementById("resolutionBtn").onclick = () =>
+  cycleGraphicsOption("resolutionBtn", resolutionOptions, { value: resolutionIndex = (resolutionIndex + 1) % resolutionOptions.length, get value() { return resolutionIndex; }, set value(v) { resolutionIndex = v; } });
+
+document.getElementById("framerateBtn").onclick = () =>
+  cycleGraphicsOption("framerateBtn", framerateOptions, { value: framerateIndex = (framerateIndex + 1) % framerateOptions.length, get value() { return framerateIndex; }, set value(v) { framerateIndex = v; } });
+
+// Fullscreen toggle placeholder
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().then(() => {
+      const btn = document.getElementById("fullscreenBtn"); if (btn) btn.classList.add("fullscreen-active");
+    }).catch(()=>{});
+  } else {
+    document.exitFullscreen().then(() => {
+      const btn = document.getElementById("fullscreenBtn"); if (btn) btn.classList.remove("fullscreen-active");
+    }).catch(()=>{});
+  }
+}
+window.toggleFullscreen = toggleFullscreen;
 
 /* Also supply the old-named openSettings/openControl etc. in case other scripts call them */
 function openSettings() { const m = document.getElementById("menu"); if (m) m.style.display = "none"; const s = document.getElementById("settings"); if (s) s.style.display = "flex"; hideAllSections(); showMainButtons(); playSelect(); }
@@ -1167,22 +1311,6 @@ function showMainButtons() {
     const el = document.getElementById(id); if (el) el.style.display = "flex";
   });
 }
-
-/* =========================================================================
-   Fullscreen toggle
-   ========================================================================= */
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().then(() => {
-      const btn = document.getElementById("fullscreenBtn"); if (btn) btn.classList.add("fullscreen-active");
-    }).catch(()=>{});
-  } else {
-    document.exitFullscreen().then(() => {
-      const btn = document.getElementById("fullscreenBtn"); if (btn) btn.classList.remove("fullscreen-active");
-    }).catch(()=>{});
-  }
-}
-window.toggleFullscreen = toggleFullscreen;
 
 /* =========================================================================
    Custom key remapping UI wiring
@@ -1309,7 +1437,36 @@ window.addEventListener("DOMContentLoaded", () => {
   switchHelpTab("A"); // default help tab
   loadAboutData(); // pre-load about data
   switchAboutTab("Game"); // default about tab
+  loadAchievements();
 });
+
+/* Achievements system */
+// Example usage in your game:
+function onEnemyDefeated() {
+  updateAchievement("2", 1); // BloodThirsty
+}
+
+function onBulletFired() {
+  updateAchievement("3", 1); // Trigger Happy
+}
+
+function onWaveReached(currentWave) {
+  if (currentWave >= 8) updateAchievement("4", currentWave); // Wave Rider
+}
+
+function onPowerupCollected() {
+  updateAchievement("5", 1); // Lucky Draw
+}
+
+function onGameWinWithoutPowerup() {
+  updateAchievement("1", 1); // True Hero
+}
+
+window.onEnemyDefeated = onEnemyDefeated;
+window.onBulletFired = onBulletFired;
+window.onWaveReached = onWaveReached;
+window.onPowerupCollected = onPowerupCollected;
+window.onGameWinWithoutPowerup = onGameWinWithoutPowerup;
 
 /* =========================================================================
    CAVEATS & NOTES

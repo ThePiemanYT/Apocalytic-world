@@ -1,0 +1,32 @@
+{
+  "1": {
+    "name": "True Hero",
+    "description": "Win a game without using any powerups.",
+    "goal": 1,
+    "progress": 0
+  },
+  "2": {
+    "name": "BloodThirsty",
+    "description": "Defeat 1000 enemies.",
+    "goal": 1000,
+    "progress": 0
+  },
+  "3": {
+    "name": "Trigger Happy",
+    "description": "Fire 1000 bullets.",
+    "goal": 1000,
+    "progress": 0
+  },
+  "4": {
+    "name": "Wave Rider",
+    "description": "Survive until wave 8.",
+    "goal": 8,
+    "progress": 0
+  },
+  "5": {
+    "name": "Lucky Draw",
+    "description": "Collect 20 powerups in one run.",
+    "goal": 20,
+    "progress": 0
+  }
+}

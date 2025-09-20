@@ -67,5 +67,19 @@
       { "type": "Juggernaut", "count": 1 },
       { "type": "Thrower", "count": 2 }
     ]
+  },
+  {
+    "wave": 8,
+    "zombies": [
+      { "type": "basic", "count": 5 },
+      { "type": "fast", "count": 5 },
+      { "type": "tank", "count": 5 },
+      { "type": "summoner", "count": 5 },
+      { "type": "armored", "count": 4 },
+      { "type": "giant", "count": 3 },
+      { "type": "Spitter", "count": 4 },
+      { "type": "Juggernaut", "count": 2 },
+      { "type": "Thrower", "count": 2 }
+    ]
   }
 ]

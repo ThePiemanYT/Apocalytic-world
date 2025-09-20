@@ -55,24 +55,66 @@
     </div>
   </div>
 
+  <!-- Achievements Panel -->
+  <div id="achievementsPanel" class="menuPanel" inert>
+    <div class="panelHeader">Achievements</div>
+    <div class="panelBody">
+      <div class="achievementsList">
+        <div class="achievementBox">Achievement 1 — Locked</div>
+        <div class="achievementBox">Achievement 2 — Locked</div>
+      </div>
+      <div style="text-align:center; margin-top:12px;">
+        <button class="controlBack" onclick="closePanel('achievementsPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Control Panel -->
   <div id="controlPanel" class="menuPanel" inert>
     <div class="panelHeader">Controls</div>
     <div class="panelBody">
-      <p style="color:#ddd; font-size:13px; margin-bottom:8px;">Choose control type or remap keys.</p>
-      <div class="controlGrid">
-        <button onclick="setControl('buttons')">Keyboard</button>
-        <button onclick="setControl('joystick')">Joystick</button>
-      </div>
-      <div style="margin-top:12px; font-size:12px; color:#ddd">
-        <strong>Keybinds</strong><br>
-        <small>Click below to open remapping.</small>
-        <div style="margin-top:8px;">
-          <button onclick="openPanel('keybindPanel')" class="controlBack">Keybinds</button>
-        </div>
+      <div class="controlGrid1">
+        <button id="controlOptionsBtn" onclick="cycleControlMode()">Keyboard</button>
+        <button onclick="openPanel('keybindPanel')">Keybind Options</button>
       </div>
       <div style="text-align:center; margin-top:14px;">
         <button class="controlBack" onclick="closePanel('controlPanel')">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keybinds Panel -->
+  <div id="keybindPanel" class="menuPanel" inert>
+    <div class="panelHeader">Keybinds</div>
+    <div class="panelBody">
+      <div class="keybindGrid">
+        <div class="keybindRow">
+          <span class="action">Move Up</span>
+          <button class="keyBtn" data-action="up">W</button>
+        </div>
+        <div class="keybindRow">
+          <span class="action">Move Down</span>
+          <button class="keyBtn" data-action="down">S</button>
+        </div>
+        <div class="keybindRow">
+          <span class="action">Move Left</span>
+          <button class="keyBtn" data-action="left">A</button>
+        </div>
+        <div class="keybindRow">
+          <span class="action">Move Right</span>
+          <button class="keyBtn" data-action="right">D</button>
+        </div>
+        <div class="keybindRow">
+          <span class="action">Shoot</span>
+          <button class="keyBtn" data-action="shoot">LMB</button>
+        </div>
+        <div class="keybindRow">
+          <span class="action">Dash</span>
+          <button class="keyBtn" data-action="dash">Q</button>
+        </div>
+      </div>
+      <div style="text-align:center; margin-top:12px;">
+        <button class="controlBack" onclick="closePanel('keybindPanel')">Back</button>
       </div>
     </div>
   </div>
@@ -81,9 +123,17 @@
   <div id="audioPanel" class="menuPanel" inert>
     <div class="panelHeader">Audio</div>
     <div class="panelBody">
-      <label><input id="menuMusicToggle" type="checkbox" checked> Music</label>
-      <label><input id="menuSfxToggle" type="checkbox" checked> SFX</label>
-      <div style="font-size:12px;color:#ddd;">Use toggles to enable/disable sounds.</div>
+      <div id="audioSliders">
+        <label>
+          Music Volume
+          <input id="musicSlider" type="range" min="0" max="100" value="100">
+        </label>
+        <label>
+          SFX Volume
+          <input id="sfxSlider" type="range" min="0" max="100" value="100">
+        </label>
+      </div>
+      <div style="font-size:12px;color:#ddd;">Adjust the volume of music and sound effects.</div>
       <div style="text-align:center; margin-top:12px;">
         <button class="controlBack" onclick="closePanel('audioPanel')">Back</button>
       </div>
@@ -95,10 +145,10 @@
     <div class="panelHeader">Graphics</div>
     <div class="panelBody">
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
-        <div style="min-width:160px; background:#111;border-radius:8px;padding:10px;">Quality<br><small style="color:#ddd">Low / Med / High</small></div>
-        <div style="min-width:160px; background:#111;border-radius:8px;padding:10px;">Resolution<br><small style="color:#ddd">Auto / Custom</small></div>
+        <button class="graphicsOption" id="qualityBtn">Quality: Low</button>
+        <button class="graphicsOption" id="resolutionBtn">Resolution: Auto</button>
+        <button class="graphicsOption" id="framerateBtn">Framerate: 60</button>
         <button id="fullscreenBtn" onclick="toggleFullscreen()">Toggle Fullscreen</button>
-        <div style="min-width:160px; background:#111;border-radius:8px;padding:10px;">Framerate<br><small style="color:#ddd">60 / 120 / Unlimited</small></div>
       </div>
       <div style="text-align:center; margin-top:12px;">
         <button class="controlBack" onclick="closePanel('graphicsPanel')">Back</button>
@@ -120,25 +170,6 @@
     </div>
   </div>
 
-  <!-- Keybinds Panel -->
-  <div id="keybindPanel" class="menuPanel" inert>
-    <div class="panelHeader">Keybinds</div>
-    <div class="panelBody">
-      <div style="font-size:12px;color:#ddd;margin-bottom:8px;">Click a field, then press a key.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px; max-width:520px; margin:0 auto;">
-        <label>Move Up <input id="kbUp" readonly value="W"></label>
-        <label>Move Down <input id="kbDown" readonly value="S"></label>
-        <label>Move Left <input id="kbLeft" readonly value="A"></label>
-        <label>Move Right <input id="kbRight" readonly value="D"></label>
-        <label>Shoot <input id="kbShoot" readonly value="LMB"></label>
-        <label>Dash <input id="kbDash" readonly value="Q"></label>
-      </div>
-      <div style="text-align:center; margin-top:12px;">
-        <button class="controlBack" onclick="closePanel('keybindPanel')">Back</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Help Panel -->
   <div id="helpPanel" class="menuPanel" inert>
     <div class="panelHeader">Help</div>
@@ -153,20 +184,6 @@
 
     <div style="text-align:center;margin-top:12px;">
       <button class="controlBack" onclick="closePanel('helpPanel')">Back</button>
-    </div>
-  </div>
-
-  <!-- Achievements Panel -->
-  <div id="achievementsPanel" class="menuPanel" inert>
-    <div class="panelHeader">Achievements</div>
-    <div class="panelBody">
-      <div class="achievementsList">
-        <div class="achievementBox">Achievement 1 — Locked</div>
-        <div class="achievementBox">Achievement 2 — Locked</div>
-      </div>
-      <div style="text-align:center; margin-top:12px;">
-        <button class="controlBack" onclick="closePanel('achievementsPanel')">Back</button>
-      </div>
     </div>
   </div>
 

@@ -1,4 +1,5 @@
 import { handleSummonerAbility, handleJuggernautAbility, handleSpitterDeathSplit, handleThrowerAbility } from "./enemyAbility.js";
+import { loadAchievements, updateAchievement, resetAchievements } from "./achievement.js";
 
 // Enemy management and AI for zombie apocalypse
 
@@ -166,6 +167,10 @@ export function drawProjectiles(ctx, camera = { x: 0, y: 0 }) {
   }
 }
 
+function onEnemyDefeated() {
+  updateAchievement("2", 1); // BloodThirsty
+}
+
 export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scoreObj, scoreDisplay, zombiesData, canvas, hitHurt, player) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     let e = enemies[i];
@@ -220,6 +225,7 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
           scoreDisplay.textContent = "Score: " + scoreObj.value;
 
           enemies.splice(i, 1);
+          onEnemyDefeated()
           if (sfxEnabled) {
             explosionSound.currentTime = 0;
             explosionSound.play();
