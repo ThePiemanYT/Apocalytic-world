@@ -15,6 +15,7 @@ import { reload } from "./reload.js";
 import { spawnPowerups, drawAndHandlePowerups } from "./powerup.js";
 import { initPowerupHUD, updatePowerupHUD, activePowerups } from "./powerup.js";
 import { updateAchievement, loadAchievements } from "./achievement.js";
+import { initInput, updateInput, input, customKeys, isMobile as isMobileDevice } from "./input.js";
 
 /* =========================================================================
    DOM references + immediate UI elements that must exist early
@@ -26,14 +27,17 @@ const finalScore = document.getElementById("finalScore");
 const healthBar = document.getElementById("healthBar");
 const waveDisplay = document.getElementById("waveDisplay");
 const backgroundMusic = document.getElementById("backgroundMusic");
+
 let musicEnabled = true;
 let sfxEnabled = true;
 let sfxVolume = 1.0;
 let musicVolume = 0.5;
+
 let sfxEnabledStored = localStorage.getItem("sfxEnabled");
 if (sfxEnabledStored !== null) sfxEnabled = sfxEnabledStored === "true";
 let musicEnabledStored = localStorage.getItem("musicEnabled");
 if (musicEnabledStored !== null) musicEnabled = musicEnabledStored === "true";
+let usedPowerup = false;
 
 /* =========================================================================
    Menu background image — MUST be created BEFORE startGame/hideMenuBackground
@@ -133,16 +137,15 @@ function onUpgradeApplied(key) {
 
 /* other state */
 let bullets = [];
-let keys = {};
-let customKeys = { left: "a", right: "d", up: "w", down: "s" };
+
+// Input state is now handled by input.js, we just keep controlMode for UI purposes
 let controlMode = "buttons";
-let isMobile = /Mobi|Android/i.test(navigator.userAgent);
-controlMode = isMobile ? "joystick" : "buttons";
+controlMode = isMobileDevice ? "joystick" : "buttons";
 
 let gameRunning = false;
 let paused = false;
 let score = 0;
-let enemyInterval, shootInterval;
+let enemyInterval;
 
 let waves = [];
 let zombiesData = {};
@@ -256,6 +259,10 @@ function startWave(waveIdx) {
   waveSpawning = true;
   waveSpawnTimer = 0;
   try { spawnPowerups(); } catch (e) { /* safe */ }
+  //achivements
+   if (waveIdx === 7) { // 8th wave (0-based)
+    onWaveReached(currentWave);
+   }
 }
 
 function spawnWaveEnemy() {
@@ -392,96 +399,11 @@ function openUpgradeScreen() {
   refreshBlocks();
 }
 
-/* =========================================================================
-   Input handling: keyboard, mouse, mobile joystick
-   ========================================================================= */
-document.addEventListener("keydown", e => {
-  // Key remaps via customKeys (when they are single-character strings)
-  if (e.key === customKeys.left) keys["ArrowLeft"] = true;
-  if (e.key === customKeys.right) keys["ArrowRight"] = true;
-  if (e.key === customKeys.up) keys["ArrowUp"] = true;
-  if (e.key === customKeys.down) keys["ArrowDown"] = true;
-  if (e.key === "Shift") player.sprinting = true;
-
-  if ((e.key === "r" || e.key === "R") && !isReloading && player.ammo < player.magazineSize && player.reserveAmmo > 0) {
-    isReloading = true;
-    if (sfxEnabled) { reloadSound.currentTime = 0; reloadSound.play(); }
-    setTimeout(() => { reload(player, updateAmmoDisplay); isReloading = false; }, 3000);
-  }
-});
-
-document.addEventListener("keyup", e => {
-  if (e.key === customKeys.left) keys["ArrowLeft"] = false;
-  if (e.key === customKeys.right) keys["ArrowRight"] = false;
-  if (e.key === customKeys.up) keys["ArrowUp"] = false;
-  if (e.key === customKeys.down) keys["ArrowDown"] = false;
-  if (e.key === "Shift") player.sprinting = false;
-});
-
-/* Mouse tracking for canvas */
-let mouse = { x: 0, y: 0 };
-if (canvas) {
-  canvas.addEventListener("mousemove", e => {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
-  });
-
-  canvas.addEventListener("mousedown", e => {
-    // left click
-    if (e.button === 0) shootBullet(mouse.x, mouse.y);
-  });
-}
-
-/* Mobile joystick UI (only if mobile) */
-if (isMobile) {
-  // minimal joystick setup (keeps your earlier behavior)
-  const joystickContainer = document.createElement("div");
-  joystickContainer.id = "joystickContainer";
-  Object.assign(joystickContainer.style, {
-    position: "absolute", bottom: "20px", left: "20px", width: "150px", height: "150px",
-    background: "rgba(255,255,255,0.06)", borderRadius: "50%", zIndex: "100"
-  });
-  document.body.appendChild(joystickContainer);
-
-  const joystick = document.createElement("div");
-  joystick.id = "joystick";
-  Object.assign(joystick.style, {
-    position: "absolute", width: "60px", height: "60px", background: "rgba(255,255,255,0.8)",
-    borderRadius: "50%", left: "50%", top: "50%", transform: "translate(-50%,-50%)"
-  });
-  joystickContainer.appendChild(joystick);
-
-  let joystickActive = false, joystickStartX = 0, joystickStartY = 0;
-  joystickContainer.addEventListener("touchstart", e => {
-    joystickActive = true;
-    joystickStartX = e.touches[0].clientX;
-    joystickStartY = e.touches[0].clientY;
-  });
-  joystickContainer.addEventListener("touchmove", e => {
-    if (!joystickActive) return;
-    const dx = e.touches[0].clientX - joystickStartX;
-    const dy = e.touches[0].clientY - joystickStartY;
-    const distance = Math.min(Math.hypot(dx, dy), 50);
-    const angle = Math.atan2(dy, dx);
-    joystick.style.left = `${50 + Math.cos(angle) * distance}%`;
-    joystick.style.top = `${50 + Math.sin(angle) * distance}%`;
-    player.x += Math.cos(angle) * player.speed;
-    player.y += Math.sin(angle) * player.speed;
-    player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-    player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
-  });
-  joystickContainer.addEventListener("touchend", () => {
-    joystickActive = false;
-    joystick.style.left = "50%";
-    joystick.style.top = "50%";
-  });
-}
 
 /* =========================================================================
    Bullet creation + update + removal
    ========================================================================= */
-function shootBullet(targetX, targetY, isWorldCoords = false) {
+function shootBullet(targetX, targetY) {
   if (!gameRunning || player.ammo <= 0 || isReloading) return;
   player.ammo--;
   updateAmmoDisplay();
@@ -490,8 +412,14 @@ function shootBullet(targetX, targetY, isWorldCoords = false) {
   const cy = player.y + player.height / 2;
   const speed = 7;
 
+  // input.js provides raw screen coordinates or relative offsets.
+  // We need to convert screen mouse pos to world pos.
+  // Camera.x/y is the top-left of the view in the world.
+  // We divide target by zoom to get "unzoomed screen pixels", then add camera offset.
+  
   const worldX = targetX / zoom + camera.x;
   const worldY = targetY / zoom + camera.y;
+  
   const angle = Math.atan2(worldY - cy, worldX - cx);
 
   const fireBullet = ang => {
@@ -523,16 +451,15 @@ function updateBullets() {
   });
 }
 
-/* joystick-shoot wrapper to rate-limit */
-let lastShootTime = 0;
-const shootDelay = 400;
-function shootBulletWithDelay(targetX, targetY) {
-  const currentTime = performance.now();
-  if (currentTime - lastShootTime < shootDelay) return;
-  lastShootTime = currentTime;
-  shootBullet(targetX, targetY, true);
+// Wrapper for reload to pass to Input Manager
+function tryReload() {
+    if (!isReloading && player.ammo < player.magazineSize && player.reserveAmmo > 0) {
+        isReloading = true;
+        if (sfxEnabled) { reloadSound.currentTime = 0; reloadSound.play(); }
+        setTimeout(() => { reload(player, updateAmmoDisplay); isReloading = false; }, 3000);
+    }
 }
-window.shootBulletWithDelay = shootBulletWithDelay;
+
 
 /* =========================================================================
    Camera & world
@@ -553,7 +480,7 @@ function drawBackground(ctx) {
   ctx.drawImage(gameBG, 0, 0, canvas.width, canvas.height);
 }
 
-/* zoom keys */
+/* zoom keys (Not handled by Input Manager, strictly UI) */
 window.addEventListener("keydown", e => {
   if (e.key === "+") zoom = Math.min(zoom + 0.1, 3);
   else if (e.key === "-") zoom = Math.max(zoom - 0.1, 0.5);
@@ -586,10 +513,47 @@ function checkWaveClear() {
    ========================================================================= */
 function autoReload() {
   if (!isReloading && player.ammo === 0 && player.reserveAmmo > 0) {
-    isReloading = true;
-    if (sfxEnabled) { reloadSound.currentTime = 0; reloadSound.play(); }
-    setTimeout(() => { reload(player, updateAmmoDisplay); isReloading = false; }, 3000);
+    tryReload();
   }
+}
+
+function drawReticle(ctx) {
+  if (!gameRunning || paused) return;
+
+  const cx = player.x + player.width / 2;
+  const cy = player.y + player.height / 2;
+  
+  let reticleX, reticleY;
+
+  // 1. Vector Aim (Gamepad/Touch)
+  if (input.aim.isVector) {
+    if (!input.aim.active) return; // Hide if not touching stick
+    const aimDist = 150; // Distance of cursor from player
+    reticleX = cx + (input.aim.x * aimDist);
+    reticleY = cy + (input.aim.y * aimDist);
+  } 
+  // 2. Mouse Aim
+  else {
+    // Convert mouse screen coords to world coords
+    reticleX = input.aim.x / zoom + camera.x;
+    reticleY = input.aim.y / zoom + camera.y;
+  }
+
+  // Draw relative to camera
+  const drawX = Math.round(reticleX - camera.x);
+  const drawY = Math.round(reticleY - camera.y);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(drawX, drawY, 10, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Center dot
+  ctx.fillStyle = "red";
+  ctx.beginPath();
+  ctx.arc(drawX, drawY, 3, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 /* =========================================================================
@@ -599,31 +563,33 @@ function gameLoop() {
   if (!gameRunning) return;
   if (paused) return;
 
-  // sprint & stamina
+  // --- NEW INPUT HANDLING ---
+  updateInput(player.x, player.y, camera.x, camera.y, zoom);
+  
+  player.sprinting = input.isSprinting;
+
+  // 2. Handle Stamina
   if (player.sprinting && player.stamina > 0) {
     player.speed = player.sprintSpeed;
     player.stamina -= 0.5;
     if (player.stamina < 0) player.stamina = 0;
   } else {
     player.speed = player.normalSpeed;
-    const moving = keys["ArrowLeft"] || keys["ArrowRight"] || keys["ArrowUp"] || keys["ArrowDown"];
-    const regen = moving ? 0.15 : 0.25;
-    player.stamina += regen;
+    // Check if moving using input.move vector
+    const moving = Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05;
+    player.stamina += moving ? 0.15 : 0.25;
     if (player.stamina > player.maxStamina) player.stamina = player.maxStamina;
   }
   if (player.stamina === 0) player.sprinting = false;
   updateStaminaBar();
 
-  // movement
-  let moveX = 0, moveY = 0;
-  if (keys["ArrowLeft"]) moveX -= 1;
-  if (keys["ArrowRight"]) moveX += 1;
-  if (keys["ArrowUp"]) moveY -= 1;
-  if (keys["ArrowDown"]) moveY += 1;
-  if (moveX !== 0 || moveY !== 0) {
-    const len = Math.hypot(moveX, moveY);
-    moveX /= len; moveY /= len;
-    player.x += moveX * player.speed; player.y += moveY * player.speed;
+  // 3. Apply Movement
+  if (Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05) {
+      player.x += input.move.x * player.speed;
+      player.y += input.move.y * player.speed;
+      // Clamp to world bounds
+      player.x = Math.max(0, Math.min(worldWidth - player.width, player.x));
+      player.y = Math.max(0, Math.min(worldHeight - player.height, player.y));
   }
 
   updateHealthBar();
@@ -667,6 +633,8 @@ function gameLoop() {
     ctx.fillRect(Math.round(b.x - b.width / 2 - camera.x), Math.round(b.y - b.height / 2 - camera.y), b.width, b.height);
   });
 
+  drawReticle(ctx);
+
   // enemies
   drawEnemies(ctx, camera, 0.6);
 
@@ -704,15 +672,25 @@ async function startGame() {
     try { await backgroundMusic.play(); } catch (e) { /* ignore autoplay policy */ }
   }
 
+  usedPowerup = false;
+
   await loadGameData();
   resetGame();
   gameRunning = true;
   updateHealthBar(); updateWaveDisplay();
   try { initPowerupHUD(); } catch (e) {}
 
-  clearInterval(enemyInterval); clearInterval(shootInterval);
+  clearInterval(enemyInterval);
+  // Auto-shoot interval removed as input.js handles input logic now
+  
   startWave(0);
-  if (controlMode === "drag") shootInterval = setInterval(autoShoot, 400);
+  
+  // Initialize Input System
+  // We pass handlers for actions that aren't per-frame (like single shot or reload)
+  initInput(canvas, {
+      onShoot: (x, y) => shootBullet(x, y),
+      onReload: tryReload
+  });
 
   requestAnimationFrame(gameLoop);
 }
@@ -823,10 +801,13 @@ document.addEventListener("keydown", e => {
    ========================================================================= */
 function endGame(victory = false) {
   gameRunning = false;
-  clearInterval(enemyInterval); clearInterval(shootInterval);
+  clearInterval(enemyInterval);
   finalScore.textContent = (victory ? "You Win! " : "Your Score: ") + score;
   const go = document.getElementById("gameOver"); if (go) go.style.display = "flex";
   backgroundMusic.pause(); backgroundMusic.currentTime = 0;
+  if (victory && !usedPowerup) {
+    updateAchievement("1", 1);
+  }
   if (sfxEnabled) {
     if (victory) { victorySound.currentTime = 0; victorySound.play(); }
     else { gameOverSound.currentTime = 0; gameOverSound.play(); }
@@ -844,83 +825,37 @@ let aboutData = null;
 async function loadAboutData() {
   const aboutTabs = document.getElementById("aboutTabs");
   const aboutContent = document.getElementById("aboutContent");
-
-  //console.log("[About] loadAboutData() called");
-
   try {
-    //console.log("[About] Fetching data/about.json …");
     const res = await fetch("data/about.json");
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} – ${res.statusText}`);
-    }
-
+    if (!res.ok) throw new Error(`HTTP ${res.status} – ${res.statusText}`);
     aboutData = await res.json();
-    //console.log("[About] JSON parsed successfully:", aboutData);
-
-    // Clear existing tabs
-    if (!aboutTabs) {
-      //console.error("[About] #aboutTabs element not found in DOM");
-    } else {
-      aboutTabs.innerHTML = "";
-    }
-
-    // Generate sidebar buttons
+    if (!aboutTabs) {} else { aboutTabs.innerHTML = ""; }
     Object.keys(aboutData).forEach(key => {
-      //console.log(`[About] Creating tab button for ${key}`);
       const button = document.createElement("button");
       button.id = "aboutTab" + key;
       button.textContent = key;
       button.onclick = () => switchAboutTab(key);
       aboutTabs.appendChild(button);
     });
-
-    // Default open first section
     const firstKey = Object.keys(aboutData)[0];
     if (firstKey) switchAboutTab(firstKey);
-
   } catch (err) {
-    console.error("[About] Failed to load about.json:", err);
-    if (aboutContent) {
-      aboutContent.innerHTML =
-        `<p class="error">Error loading about content. Please check that <b>data/about.json</b> exists and is valid JSON.</p>`;
-    }
+    if (aboutContent) aboutContent.innerHTML = `<p class="error">Error loading about content.</p>`;
   }
 }
 
 // Switch between About sections
 function switchAboutTab(tabId) {
-  //console.log(`[About] switchAboutTab(${tabId}) called`);
-
   const aboutContent = document.getElementById("aboutContent");
-  if (!aboutContent) {
-    //console.error("[About] #aboutContent element not found in DOM");
-    return;
-  }
-
-  if (!aboutData) {
-    //console.error("[About] aboutData is null – did loadAboutData() run?");
-    aboutContent.innerHTML = `<p class="error">About data not loaded yet.</p>`;
-    return;
-  }
-
+  if (!aboutContent || !aboutData) return;
   const entry = aboutData[tabId];
-  if (!entry) {
-    //console.warn(`[About] No entry found in aboutData for key: ${tabId}`);
-    aboutContent.innerHTML = `<p class="error">No content for section ${tabId}</p>`;
-    return;
-  }
-
-  // Replace \n with <br> for multi-line formatting
+  if (!entry) return;
   const formattedContent = entry.content.replace(/\n/g, "<br>");
-
   aboutContent.innerHTML = `
     <h4 style="color:#ffd166">${entry.title}</h4>
     <p style="color:#ddd; font-size:13px; line-height:1.6;">${formattedContent}</p>
   `;
   aboutContent.scrollTop = 0;
-
-  // Highlight active tab
   document.querySelectorAll("#aboutTabs button").forEach(btn => btn.classList.remove("active"));
   const activeBtn = document.getElementById("aboutTab" + tabId);
   if (activeBtn) activeBtn.classList.add("active");
@@ -928,70 +863,44 @@ function switchAboutTab(tabId) {
   playSelect?.();
 }
 
-// Hook loader when About panel is opened
 const __openPanel = window.openPanel;
 window.openPanel = function (id) {
-  //console.log(`[Global] openPanel(${id})`);
   __openPanel(id);
   if (id === "aboutPanel") {
-    console.log("[About] Detected aboutPanel opening – loading data …");
     loadAboutData();
   }
 };
 
-// Open a panel
 function openPanel(id) {
-  //console.log(`[Panel] openPanel(${id})`);
-
-  // Hide all panels
   document.querySelectorAll(".menuPanel").forEach(p => {
     p.style.display = "none";
     p.setAttribute("inert", "");
   });
-
-  // Show target panel
   const el = document.getElementById(id);
   if (el) {
     el.style.display = "flex";
     el.removeAttribute("inert");
     panelStack.push(id);
-
-    // Focus first focusable element
     const focusable = el.querySelector("button, [tabindex], input, select, textarea, a[href]");
     if (focusable) focusable.focus();
   }
-
-  // Hide version label + menu
   const versionLabel = document.getElementById("versionLabel");
   if (versionLabel) versionLabel.style.display = "none";
   const menuEl = document.getElementById("menu1");
   if (menuEl) menuEl.style.display = "none";
-
-  // If Help panel opened → load data
-  if (id === "helpPanel") {
-    //console.log("[Help] Detected helpPanel opening – loading data …");
-    loadHelpData();
-  }
+  if (id === "helpPanel") loadHelpData();
   playSelect.currentTime = 0;
   playSelect?.();
 }
 
-// Close a panel
 function closePanel(id) {
-  console.log(`[Panel] closePanel(${id})`);
-
   const el = document.getElementById(id);
   if (el) {
-    if (el.contains(document.activeElement)) {
-      document.activeElement.blur();
-    }
+    if (el.contains(document.activeElement)) document.activeElement.blur();
     el.style.display = "none";
     el.setAttribute("inert", "");
   }
-
-  // Remove from stack
   panelStack.pop();
-
   const prev = panelStack[panelStack.length - 1];
   if (prev) {
     const prevEl = document.getElementById(prev);
@@ -1015,114 +924,50 @@ function closePanel(id) {
   playSelect?.();
 }
 
-// Load help.json dynamically
 async function loadHelpData() {
   const helpTabs = document.getElementById("helpTabs");
   const helpContent = document.getElementById("helpContent");
-  const statusMessage = document.getElementById("statusMessage");
-
-  //console.log("[Help] loadHelpData() called");
-
-  if (statusMessage) statusMessage.innerHTML = '<span class="loading">Loading help data...</span>';
-
   try {
-    //console.log("[Help] Fetching data/help.json …");
     const res = await fetch("data/help.json");
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} – ${res.statusText}`);
-    }
-
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     helpData = await res.json();
-    //console.log("[Help] JSON parsed successfully:", helpData);
-
-    if (statusMessage) statusMessage.innerHTML = '<span class="success">Help data loaded successfully!</span>';
-
-    // Clear existing tabs
-    if (!helpTabs) {
-      console.error("[Help] #helpTabs element not found in DOM");
-    } else {
-      helpTabs.innerHTML = "";
-    }
-
-    // Generate tabs (A–F)
+    if (!helpTabs) {} else { helpTabs.innerHTML = ""; }
     Object.keys(helpData).forEach(key => {
-      //console.log(`[Help] Creating tab button for ${key}`);
       const button = document.createElement("button");
       button.id = "tab" + key;
       button.textContent = key;
       button.onclick = () => switchHelpTab(key);
       helpTabs.appendChild(button);
     });
-
-    // Default to first tab
     const firstKey = Object.keys(helpData)[0];
-    //console.log("[Help] Default tab:", firstKey);
     if (firstKey) switchHelpTab(firstKey);
-
   } catch (err) {
-    console.error("[Help] Failed to load help.json:", err);
-    if (statusMessage) statusMessage.innerHTML = `<span class="error">Failed to load help data: ${err.message}</span>`;
-    if (helpContent) {
-      helpContent.innerHTML = `<p class="error">Error loading help content. Please check that <b>data/help.json</b> exists and is valid JSON.</p>`;
-    }
+    if (helpContent) helpContent.innerHTML = `<p class="error">Error loading help content.</p>`;
   }
 }
 
-// Switch tabs
 function switchHelpTab(tabId) {
-  //console.log(`[Help] switchHelpTab(${tabId}) called`);
-
   const helpContent = document.getElementById("helpContent");
-  if (!helpContent) {
-    console.error("[Help] #helpContent element not found in DOM");
-    return;
-  }
-
-  if (!helpData) {
-    console.error("[Help] helpData is null – did loadHelpData() run?");
-    helpContent.innerHTML = `<p class="error">Help data not loaded yet.</p>`;
-    return;
-  }
-
+  if (!helpContent || !helpData) return;
   const entry = helpData[tabId];
-  if (!entry) {
-    console.warn(`[Help] No entry found in helpData for key: ${tabId}`);
-    helpContent.innerHTML = `<p class="error">No content for section ${tabId}</p>`;
-    return;
-  }
-
+  if (!entry) return;
   helpContent.innerHTML = `
     <h4 style="color:#ffd166">${entry.title}</h4>
     <p style="color:#ddd; font-size:13px; line-height:1.6;">${entry.content}</p>
   `;
   helpContent.scrollTop = 0;
-
-  // Highlight active tab
   const buttons = document.querySelectorAll("#helpTabs button");
-  //console.log("[Help] Clearing active state from", buttons.length, "buttons");
   buttons.forEach(btn => btn.classList.remove("active"));
-
   const activeBtn = document.getElementById("tab" + tabId);
-  if (activeBtn) {
-    //console.log(`[Help] Setting active tab: ${tabId}`);
-    activeBtn.classList.add("active");
-  } else {
-    //console.warn(`[Help] Could not find button with id: tab${tabId}`);
-  }
+  if (activeBtn) activeBtn.classList.add("active");
   playSelect.currentTime = 0;
   playSelect?.();
 }
 
-// Hook loadHelpData when Help panel is opened
 const _openPanel = window.openPanel;
 window.openPanel = function (id) {
-  //console.log(`[Help] openPanel(${id})`);
   _openPanel(id);
-  if (id === "helpPanel") {
-    //console.log("[Help] Detected helpPanel opening – loading data …");
-    loadHelpData();
-  }
+  if (id === "helpPanel") loadHelpData();
 };
 
 window.openPanel = openPanel;
@@ -1135,7 +980,6 @@ window.cycleControlMode = cycleControlMode;
 let currentControl = "Keyboard"; // default mode
 const controlModes = ["Keyboard", "Mobile", "Controller"];
 
-// Cycle control modes with animation
 function cycleControlMode() {
   const btn = document.getElementById("controlOptionsBtn");
   const currentIndex = controlModes.indexOf(currentControl);
@@ -1151,7 +995,7 @@ function cycleControlMode() {
 }
 
 // ----------------
-// Keybind Remapping
+// Keybind Remapping (Visual only in this block, actual logic handled via setupCustomKeyInputs)
 // ----------------
 const defaultKeybinds = {
   up: "W",
@@ -1177,7 +1021,6 @@ document.querySelectorAll(".keyBtn").forEach(btn => {
       keybinds[action] = key;
       btn.textContent = key;
       btn.classList.remove("listening");
-
       document.removeEventListener("keydown", listener);
     };
 
@@ -1189,7 +1032,6 @@ document.querySelectorAll(".keyBtn").forEach(btn => {
 const musicSlider = document.getElementById("musicSlider");
 const sfxSlider = document.getElementById("sfxSlider");
 
-// Apply saved settings if they exist
 if (localStorage.getItem("musicVolume")) {
   musicVolume = parseFloat(localStorage.getItem("musicVolume"));
   musicSlider.value = musicVolume * 100;
@@ -1199,14 +1041,12 @@ if (localStorage.getItem("sfxVolume")) {
   sfxSlider.value = sfxVolume * 100;
 }
 
-// Update music volume
 musicSlider.addEventListener("input", () => {
   musicVolume = musicSlider.value / 100;
   backgroundMusic.volume = musicVolume;
   localStorage.setItem("musicVolume", musicVolume);
 });
 
-// Update SFX volume
 sfxSlider.addEventListener("input", () => {
   sfxVolume = sfxSlider.value / 100;
   [selectSound, explosionSound, shootSound, hitHurt, powerUpSound, reloadSound, victorySound, gameOverSound]
@@ -1214,7 +1054,6 @@ sfxSlider.addEventListener("input", () => {
   localStorage.setItem("sfxVolume", sfxVolume);
 });
 
-// Set initial volumes
 backgroundMusic.volume = musicVolume;
 [selectSound, explosionSound, shootSound, hitHurt, powerUpSound, reloadSound, victorySound, gameOverSound]
   .forEach(sfx => sfx.volume = sfxVolume);
@@ -1223,19 +1062,15 @@ function updateSliderTooltip(slider) {
   const val = slider.value;
   const percent = (val - slider.min) / (slider.max - slider.min);
   slider.setAttribute("data-value", val);
-
-  // Position tooltip above thumb
   slider.style.setProperty("--thumb-x", `${percent * 100}%`);
 }
 
-// Apply on both sliders
 [musicSlider, sfxSlider].forEach(slider => {
   updateSliderTooltip(slider); // initial value
   slider.addEventListener("input", () => updateSliderTooltip(slider));
 });
 
 /* Graphics quality selector */
-// Placeholder options
 const qualityOptions = ["Low", "Medium", "High"];
 const resolutionOptions = ["Auto", "720p", "1080p"];
 const framerateOptions = ["60", "45", "30"];
@@ -1251,7 +1086,6 @@ function cycleGraphicsOption(buttonId, options, indexRef) {
     ": " + options[indexRef.value];
 }
 
-// Attach events
 document.getElementById("qualityBtn").onclick = () =>
   cycleGraphicsOption("qualityBtn", qualityOptions, { value: qualityIndex = (qualityIndex + 1) % qualityOptions.length, get value() { return qualityIndex; }, set value(v) { qualityIndex = v; } });
 
@@ -1261,7 +1095,6 @@ document.getElementById("resolutionBtn").onclick = () =>
 document.getElementById("framerateBtn").onclick = () =>
   cycleGraphicsOption("framerateBtn", framerateOptions, { value: framerateIndex = (framerateIndex + 1) % framerateOptions.length, get value() { return framerateIndex; }, set value(v) { framerateIndex = v; } });
 
-// Fullscreen toggle placeholder
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().then(() => {
@@ -1275,14 +1108,11 @@ function toggleFullscreen() {
 }
 window.toggleFullscreen = toggleFullscreen;
 
-/* Also supply the old-named openSettings/openControl etc. in case other scripts call them */
 function openSettings() { const m = document.getElementById("menu"); if (m) m.style.display = "none"; const s = document.getElementById("settings"); if (s) s.style.display = "flex"; hideAllSections(); showMainButtons(); playSelect(); }
 function closeSettings() { const s = document.getElementById("settings"); if (s) s.style.display = "none"; const m = document.getElementById("menu"); if (m) m.style.display = "flex"; playSelect(); }
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 
-/* Minimal implementations for helpers referenced in your previous code.
-   They attempt to show/hide known sections if present. */
 function openAudio() { hideMainButtons(); const a = document.getElementById("audioPanel"); if (a) a.style.display = "block"; playSelect(); }
 function backAudio() { const a = document.getElementById("audioPanel"); if (a) a.style.display = "none"; showMainButtons(); playSelect(); }
 window.openAudio = openAudio; window.backAudio = backAudio;
@@ -1295,7 +1125,6 @@ function openCredit() { openPanel('creditsPanel'); playSelect(); }
 function backCredit() { closePanel('creditsPanel'); playSelect(); }
 window.openCredit = openCredit; window.backCredit = backCredit;
 
-/* Utility helpers used by settings nav */
 function hideAllSections() {
   ["audioSection", "controlSection", "creditSection"].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = "none";
@@ -1313,9 +1142,7 @@ function showMainButtons() {
 }
 
 /* =========================================================================
-   Custom key remapping UI wiring
-   Expects inputs with IDs leftKeyInput/rightKeyInput/upKeyInput/downKeyInput
-   and a button with id resetKeysBtn
+   Custom key remapping UI wiring (Synced with Input.js)
    ========================================================================= */
 function updateKeyInputs() {
   const left = document.getElementById("leftKeyInput");
@@ -1346,6 +1173,7 @@ function setupCustomKeyInputs() {
     if (!waitingFor) return;
     e.preventDefault();
     if (e.key.length === 1 || ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) {
+      // Modifies the exported object from input.js
       customKeys[waitingFor] = e.key;
       updateKeyInputs();
       waitingFor = null;
@@ -1355,7 +1183,10 @@ function setupCustomKeyInputs() {
   const resetBtn = document.getElementById("resetKeysBtn");
   if (resetBtn) {
     resetBtn.addEventListener("click", () => {
-      customKeys = { left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown" };
+      customKeys.left = "a";
+      customKeys.right = "d";
+      customKeys.up = "w";
+      customKeys.down = "s";
       updateKeyInputs();
     });
   }
@@ -1363,7 +1194,7 @@ function setupCustomKeyInputs() {
 }
 
 /* =========================================================================
-   Music & SFX toggles wiring (IDs expected in DOM)
+   Music & SFX toggles wiring
    ========================================================================= */
 const musicToggle = document.getElementById("musicToggle");
 const sfxToggle = document.getElementById("sfxToggle");
@@ -1383,7 +1214,6 @@ if (sfxToggle) {
   });
 }
 
-/* helper already used earlier */
 function playSelect() {
   try {
     selectSound.currentTime = 0;
@@ -1419,7 +1249,7 @@ window.quitGame = quitGame;
 window.restartGame = restartGame;
 window.backToMenu = backToMenu;
 window.toggleFullscreen = toggleFullscreen;
-window.setControl = function(mode){ controlMode = mode; playSelect(); }; // minimal setControl
+window.setControl = function(mode){ controlMode = mode; playSelect(); };
 
 window.addEventListener("DOMContentLoaded", () => {
   try { setupCustomKeyInputs(); } catch (e) {}
@@ -1429,50 +1259,46 @@ window.addEventListener("DOMContentLoaded", () => {
   updateWaveDisplay();
   updateAmmoDisplay();
   updateStaminaBar();
+  
   loadGameData().then(() => {
     console.log("Game data loaded");
   }).catch(err => {
     console.error("Failed to load game data:", err);
   });
-  switchHelpTab("A"); // default help tab
-  loadAboutData(); // pre-load about data
-  switchAboutTab("Game"); // default about tab
+  
+  switchHelpTab("A"); 
+  loadAboutData(); 
+  switchAboutTab("Game");
   loadAchievements();
 });
 
-/* Achievements system */
-// Example usage in your game:
-function onEnemyDefeated() {
-  updateAchievement("2", 1); // BloodThirsty
-}
+window.addEventListener("device-changed", (e) => {
+  const newMode = e.detail.device; // 'keyboard', 'gamepad', 'touch'
+  const btn = document.getElementById("controlOptionsBtn");
+  
+  // Map to UI names
+  if (newMode === 'keyboard') controlMode = 'Keyboard';
+  else if (newMode === 'gamepad') controlMode = 'Controller';
+  else if (newMode === 'touch') controlMode = 'Mobile';
 
-function onBulletFired() {
-  updateAchievement("3", 1); // Trigger Happy
-}
+  if (btn) {
+    btn.textContent = controlMode;
+    // Trigger the swap animation
+    btn.classList.remove("swapText");
+    void btn.offsetWidth; 
+    btn.classList.add("swapText");
+  }
+});
 
-function onWaveReached(currentWave) {
-  if (currentWave >= 8) updateAchievement("4", currentWave); // Wave Rider
-}
-
-function onPowerupCollected() {
-  updateAchievement("5", 1); // Lucky Draw
-}
-
-function onGameWinWithoutPowerup() {
-  updateAchievement("1", 1); // True Hero
-}
+/* Achievements system hooks */
+function onEnemyDefeated() { updateAchievement("2", 1); }
+function onBulletFired() { updateAchievement("3", 1); }
+function onWaveReached(currentWave) { if (currentWave + 1 >= 8) updateAchievement("4", 8); }
+function onPowerupCollected() { updateAchievement("5", 1); }
+function onGameWinWithoutPowerup() { usedPowerup = true; updateAchievement("1", 1); }
 
 window.onEnemyDefeated = onEnemyDefeated;
 window.onBulletFired = onBulletFired;
 window.onWaveReached = onWaveReached;
 window.onPowerupCollected = onPowerupCollected;
 window.onGameWinWithoutPowerup = onGameWinWithoutPowerup;
-
-/* =========================================================================
-   CAVEATS & NOTES
-   - This file merges and preserves the logic from your scattered snippets.
-   - If some helper functions (autoShoot, some DOM IDs) are missing from your project,
-     they should be added or the callsites removed.
-   - Keep enemy.js, powerup.js, reload.js exports intact.
-   - If you see `null` DOM references in console, verify the HTML contains the expected IDs.
-   ========================================================================= */
