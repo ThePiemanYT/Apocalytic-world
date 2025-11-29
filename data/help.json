@@ -5,7 +5,7 @@
   },
   "2": {
     "title": "Controls",
-    "content": "Keyboard & Mouse:\n• Movement — W, A, S, D\n• Aim — Mouse\n• Shoot — Left Mouse Button\n• Reload — R\n• Sprint — Hold Shift\n\nMobile:\n• Virtual joystick for movement\n• Tap and drag to aim\n• Auto-shoot available in joystick mode\n\nTip: Good aim and movement are equally important. Keep strafing while firing to avoid damage."
+    "content": "The game automatically detects your input device.\n\nKeyboard & Mouse:\n• Move — W, A, S, D\n• Aim — Mouse Cursor\n• Shoot — Left Click\n• Reload — R\n• Sprint — Hold Shift\n\nController (Gamepad):\n• Move — Left Stick\n• Aim — Right Stick\n• Shoot — R2 / RT\n• Sprint — L2 / LT or L3\n• Reload — X (Xbox) / Square (PS)\n\nMobile:\n• Left Stick — Move\n• Right Stick — Aim & Shoot\n• Drag screen to look around (if not using sticks)"
   },
   "3": {
     "title": "Powerups",
