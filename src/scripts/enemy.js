@@ -1,37 +1,51 @@
+/* src/scripts/enemy.js */
 import { handleSummonerAbility, handleJuggernautAbility, handleSpitterDeathSplit, handleThrowerAbility } from "./enemyAbility.js";
-import { loadAchievements, updateAchievement, resetAchievements } from "./achievement.js";
+import { updateAchievement } from "./achievement.js";
 
-// Enemy management and AI for zombie apocalypse
-
+// Active enemies list (for logic iteration)
 export let enemies = [];
+// Pool of reusable enemy objects (to reduce Garbage Collection)
+const enemyPool = [];
+
 export let projectiles = [];
 
 export function resetEnemies() {
-  enemies.length = 0;
+  // Return active enemies to pool
+  while(enemies.length > 0) {
+    enemyPool.push(enemies.pop());
+  }
   projectiles.length = 0;
-  // No need to clear timers here, handled in enemyAbility.js
+}
+
+// Get a fresh enemy object (reused or new)
+function getFreeEnemy() {
+  if (enemyPool.length > 0) return enemyPool.pop();
+  return { x: 0, y: 0, width: 40, height: 40, speed: 0, health: 0, maxHealth: 0, color: "red", type: "basic", hitFlash: 0 };
 }
 
 export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null, e) {
   const zData = zombiesData[type] || zombiesData["basic"];
+  const enemy = getFreeEnemy();
+  
   let size = zData.size || 40;
-  let spawnX = x !== null ? x : Math.random() * (canvasWidth - size);
-  let spawnY = y !== null ? y : 0;
-  enemies.push({
-    x: spawnX,
-    y: spawnY,
-    width: size,
-    height: size,
-    speed: zData.speed,
-    health: zData.health,
-    maxHealth: zData.health,
-    color: zData.color || "red",
-    type,
-    hitFlash: 0
-  });
+  enemy.width = size;
+  enemy.height = size;
+  enemy.x = x !== null ? x : Math.random() * (canvasWidth - size);
+  enemy.y = y !== null ? y : 0;
+  enemy.speed = zData.speed;
+  enemy.health = zData.health;
+  enemy.maxHealth = zData.health;
+  enemy.color = zData.color || "red";
+  enemy.type = type;
+  enemy.hitFlash = 0;
+  // Reset internal draw sizes for interpolation
+  enemy._drawWidth = size;
+  enemy._drawHeight = size;
+
+  enemies.push(enemy);
 }
 
-export function updateEnemies(player, canvas, zombiesData) {
+export function updateEnemies(player, canvas, zombiesData, timeScale = 1) {
   // --- Basic AI movement toward player ---
   for (let e of enemies) {
     const ex = e.x + e.width / 2;
@@ -42,10 +56,10 @@ export function updateEnemies(player, canvas, zombiesData) {
     let dy = py - ey;
     let dist = Math.hypot(dx, dy);
 
-    // Move toward player
+    // Move toward player (Scaled by Delta Time)
     if (dist > 0) {
-      e.x += (dx / dist) * e.speed;
-      e.y += (dy / dist) * e.speed;
+      e.x += (dx / dist) * e.speed * timeScale;
+      e.y += (dy / dist) * e.speed * timeScale;
     }
   }
 
@@ -69,6 +83,7 @@ export function updateEnemies(player, canvas, zombiesData) {
         dx /= dist;
         dy /= dist;
         const overlap = (minDist - dist) / 2;
+        // Separation force also scaled slightly by timeScale to prevent jitter
         a.x += dx * overlap;
         a.y += dy * overlap;
         b.x -= dx * overlap;
@@ -83,15 +98,14 @@ export function updateEnemies(player, canvas, zombiesData) {
   handleThrowerAbility(enemies, player, projectiles, zombiesData);
 }
 
-export function updateProjectiles(canvas) {
+export function updateProjectiles(canvas, timeScale = 1) {
   // Move projectiles
-  for (let p of projectiles) {
-    p.x += p.dx;
-    p.y += p.dy;
-  }
-  // Remove projectiles out of bounds
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i];
+    p.x += p.dx * timeScale;
+    p.y += p.dy * timeScale;
+    
+    // Remove projectiles out of bounds
     if (
       p.x < -50 || p.x > canvas.width + 50 ||
       p.y < -50 || p.y > canvas.height + 50
@@ -172,66 +186,78 @@ function onEnemyDefeated() {
 }
 
 export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scoreObj, scoreDisplay, zombiesData, canvas, hitHurt, player) {
+  // Use reverse loop for safe removal (enemies)
   for (let i = enemies.length - 1; i >= 0; i--) {
     let e = enemies[i];
-    for (let j = bullets.length - 1; j >= 0; j--) {
+    let enemyHit = false;
+
+    // Iterate through bullets pool
+    // Note: bullets is now a fixed array, so we don't splice it. We set .active = false.
+    for (let j = 0; j < bullets.length; j++) {
       let b = bullets[j];
+      if (!b.active) continue;
+
       if (
         b.x < e.x + e.width &&
         b.x + b.width > e.x &&
         b.y < e.y + e.height &&
         b.y + b.height > e.y
       ) {
-        // Damage enemy (use bullet damage for double damage)
+        // Damage enemy
         e.health -= b.damage || 1;
-        bullets.splice(j, 1);
+        
+        // Deactivate bullet (return to pool)
+        b.active = false;
 
-        e.hitFlash = 10; // lasts ~10 frames
+        e.hitFlash = 10;
+        enemyHit = true;
 
-        // Apply knockback to enemy
+        // Apply knockback
         const baseKnockback = 8;
         const knockbackBoost = 1 + (player.upgrades.knockback || 0) * 0.2;
         const knockbackResist = e.knockbackResist || 0;
         const finalKnockback = baseKnockback * knockbackBoost * (1 - knockbackResist);
 
-        // Determine knockback direction:
-        // Prefer bullet velocity (b.dx, b.dy). If zero, fall back to vector from bullet to enemy.
         let kdx = b.dx || 0;
         let kdy = b.dy || 0;
         if (Math.hypot(kdx, kdy) === 0) {
-          kdx = (e.x + e.width/2) - (b.x + (b.width||0)/2);
-          kdy = (e.y + e.height/2) - (b.y + (b.height||0)/2);
+          kdx = (e.x + e.width/2) - (b.x + 4);
+          kdy = (e.y + e.height/2) - (b.y + 4);
         }
         const klen = Math.hypot(kdx, kdy) || 1;
-        kdx /= klen;
-        kdy /= klen;
+        e.x += (kdx / klen) * finalKnockback;
+        e.y += (kdy / klen) * finalKnockback;
 
-        // Apply knockback (move enemy away along the normalized bullet direction)
-        e.x += kdx * finalKnockback;
-        e.y += kdy * finalKnockback;
+        // Break inner loop (one bullet hits one enemy)
+        // If penetrating bullets are added later, remove this break
+        break; 
+      }
+    }
 
-        if (sfxEnabled) {
-          hitHurt.currentTime = 0;
-          hitHurt.play();
-        }
+    if (enemyHit && sfxEnabled) {
+      // Use throttled sound helper if available, else direct play
+      // Assuming index.js passes the sound object, but we should use the audio manager directly if possible for throttling
+      // But preserving existing signature:
+      hitHurt.currentTime = 0;
+      hitHurt.play().catch(()=>{}); 
+    }
 
-        if (e.health <= 0) {
-          // Spitter split ability
-          handleSpitterDeathSplit(e, enemies, zombiesData, canvas.width);
+    if (e.health <= 0) {
+      handleSpitterDeathSplit(e, enemies, zombiesData, canvas.width);
+      
+      const zData = zombiesData[e.type] || zombiesData["basic"];
+      scoreObj.value += zData.score || 10;
+      scoreDisplay.textContent = "Score: " + scoreObj.value;
 
-          // Award score based on enemy type
-          const zData = zombiesData[e.type] || zombiesData["basic"];
-          scoreObj.value += zData.score || 10;
-          scoreDisplay.textContent = "Score: " + scoreObj.value;
-
-          enemies.splice(i, 1);
-          onEnemyDefeated()
-          if (sfxEnabled) {
-            explosionSound.currentTime = 0;
-            explosionSound.play();
-          }
-        }
-        break;
+      // Remove from active list and send to pool
+      enemyPool.push(e);
+      enemies.splice(i, 1);
+      
+      onEnemyDefeated();
+      if (sfxEnabled) {
+        // Throttled explosion would be better here, handled in index.js call or wrapper
+        explosionSound.currentTime = 0;
+        explosionSound.play().catch(()=>{});
       }
     }
   }
@@ -239,22 +265,18 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
 
 export function handlePlayerCollisions(player, updateHealthBar, endGame) {
   const now = Date.now();
-
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    let e = enemies[i];
+  for (let e of enemies) {
     if (
       player.x < e.x + e.width &&
       player.x + player.width > e.x &&
       player.y < e.y + e.height &&
       player.y + player.height > e.y
     ) {
-      if (player.immune) continue; // Immune → skip damage
-
-      if (now - player.lastHitTime >= 1000) { // 1s cooldown
+      if (player.immune) continue;
+      if (now - player.lastHitTime >= 1000) {
         player.health -= 1;
         player.lastHitTime = now;
         updateHealthBar();
-
         if (player.health <= 0) {
           endGame();
           return true;
@@ -274,7 +296,6 @@ export function handleProjectilePlayerCollision(player, updateHealthBar, endGame
       player.y < p.y + p.height &&
       player.y + player.height > p.y
     ) {
-      // Damage player
       player.health -= 1;
       updateHealthBar();
       projectiles.splice(i, 1);

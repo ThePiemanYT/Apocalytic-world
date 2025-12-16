@@ -1,7 +1,10 @@
+/* src/scripts/powerup.js */
 export let activePowerups = [];
+export let powerups = []; // Items on the ground
 
 // --- HUD container ---
 let powerupHUD = null;
+
 export function initPowerupHUD() {
   if (!powerupHUD) {
     powerupHUD = document.createElement("div");
@@ -21,6 +24,8 @@ export function initPowerupHUD() {
       pointerEvents: "none"
     });
     document.body.appendChild(powerupHUD);
+  } else {
+    powerupHUD.style.display = "flex";
   }
 }
 
@@ -38,18 +43,41 @@ export function updatePowerupHUD() {
       padding: "6px 10px",
       borderRadius: "6px",
       background: "rgba(0,0,0,0.6)",
-      border: "1px solid rgba(255,255,255,0.2)"
+      border: `1px solid ${getColorForType(p.type)}`,
+      color: getColorForType(p.type)
     });
     div.textContent = `${p.type}: ${timeLeft}s`;
     powerupHUD.appendChild(div);
   });
 }
 
+function getColorForType(type) {
+  if (type === "Double") return "yellow";
+  if (type === "Immune") return "aqua";
+  if (type === "Triple") return "violet";
+  return "#fff";
+}
+
+// --- FIX: Comprehensive Reset Function ---
+export function resetPowerups() {
+  // 1. Clear active effects
+  activePowerups = [];
+  
+  // 2. Clear items on ground
+  powerups = [];
+
+  // 3. Clear HUD
+  if (powerupHUD) {
+    powerupHUD.innerHTML = "";
+    powerupHUD.style.display = "none";
+  }
+}
+
 export const powerupTypes = [
   {
     type: "ammo",
     color: "blue",
-    effect: (player, updateAmmoDisplay, showPowerupMessage, updateHealthBar) => {
+    effect: (player, updateAmmoDisplay, showPowerupMessage) => {
       player.reserveAmmo += 42;
       updatePowerupHUD();
       if (updateAmmoDisplay) updateAmmoDisplay();
@@ -74,17 +102,13 @@ export const powerupTypes = [
     type: "double",
     color: "yellow",
     effect: (player, _, showPowerupMessage) => {
-      const duration = 10000; // 10s
+      const duration = 10000; 
       const expire = Date.now() + duration;
-
-      // Remove old "Double" if it exists
       activePowerups = activePowerups.filter(p => p.type !== "Double");
-
-      // Add fresh one
       activePowerups.push({ type: "Double", expireTime: expire });
+      
       player.doubleDamage = true;
       updatePowerupHUD();
-
       if (showPowerupMessage) showPowerupMessage("Double Damage!");
 
       setTimeout(() => {
@@ -98,16 +122,13 @@ export const powerupTypes = [
     type: "immunity",
     color: "aqua",
     effect: (player, _, showPowerupMessage) => {
-      const duration = 10000; // 10s
+      const duration = 10000; 
       const expire = Date.now() + duration;
-
-      // Remove old "Immune" if it exists
       activePowerups = activePowerups.filter(p => p.type !== "Immune");
-
       activePowerups.push({ type: "Immune", expireTime: expire });
+      
       player.immune = true;
       updatePowerupHUD();
-
       if (showPowerupMessage) showPowerupMessage("Immune!");
 
       setTimeout(() => {
@@ -121,16 +142,13 @@ export const powerupTypes = [
     type: "triple",
     color: "violet",
     effect: (player, _, showPowerupMessage) => {
-      const duration = 10000; // 10s
+      const duration = 10000;
       const expire = Date.now() + duration;
-
-      // Remove old "Triple" if it exists
       activePowerups = activePowerups.filter(p => p.type !== "Triple");
-
       activePowerups.push({ type: "Triple", expireTime: expire });
+      
       player.tripleShot = true;
       updatePowerupHUD();
-
       if (showPowerupMessage) showPowerupMessage("Triple Shot!");
 
       setTimeout(() => {
@@ -142,11 +160,9 @@ export const powerupTypes = [
   }
 ];
 
-export let powerups = [];
-
 export function spawnPowerups() {
   powerups.length = 0;
-  const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
+  const count = 2 + Math.floor(Math.random() * 2); 
   for (let i = 0; i < count; i++) {
     const pType = powerupTypes[Math.floor(Math.random() * powerupTypes.length)];
     powerups.push({
@@ -159,7 +175,6 @@ export function spawnPowerups() {
   }
 }
 
-// Call this from your game loop (after drawing everything else)
 export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, powerUpSound, updateHealthBar, camera = { x: 0, y: 0 }) {
   for (let i = powerups.length - 1; i >= 0; i--) {
     let p = powerups[i];
@@ -169,43 +184,35 @@ export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled
       player.y < p.y + p.height &&
       player.y + player.height > p.y
     ) {
-      // apply effect (pass updateHealthBar as 4th arg)
       p.type.effect(player, updateAmmoDisplay, showPowerupMessage, updateHealthBar);
-      // --- Always update health bar after picking up any powerup ---
       if (updateHealthBar) updateHealthBar();
       powerups.splice(i, 1);
       if (sfxEnabled && powerUpSound) {
         powerUpSound.currentTime = 0;
-        powerUpSound.play();
+        powerUpSound.play().catch(()=>{});
       }
     }
   }
+  
   powerups.forEach(p => {
     ctx.fillStyle = p.type.color;
     ctx.fillRect(p.x - camera.x, p.y - camera.y, p.width, p.height);
-
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = "black";
     ctx.strokeRect(p.x - camera.x, p.y - camera.y, p.width, p.height);
   });
 }
 
-// --- Powerup message UI ---
 let powerupMsgDiv = null;
 function showPowerupMessage(msg) {
   if (!powerupMsgDiv) {
     powerupMsgDiv = document.createElement("div");
     powerupMsgDiv.id = "powerupMsgDiv";
-    powerupMsgDiv.style.position = "fixed";
-    powerupMsgDiv.style.left = "50%";
-    powerupMsgDiv.style.top = "50%";
-    powerupMsgDiv.style.transform = "translate(-50%, -50%)";
-    powerupMsgDiv.style.fontSize = "38px";
-    powerupMsgDiv.style.color = "#ffe066";
-    powerupMsgDiv.style.fontFamily = "Press Start 2P, Arial, sans-serif";
-    powerupMsgDiv.style.textShadow = "2px 2px 8px #222";
-    powerupMsgDiv.style.zIndex = 2001;
-    powerupMsgDiv.style.pointerEvents = "none";
+    Object.assign(powerupMsgDiv.style, {
+        position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
+        fontSize: "38px", color: "#ffe066", fontFamily: "Press Start 2P, Arial, sans-serif",
+        textShadow: "2px 2px 8px #222", zIndex: 2001, pointerEvents: "none", transition: "opacity 0.3s"
+    });
     document.body.appendChild(powerupMsgDiv);
   }
   powerupMsgDiv.textContent = msg;
@@ -213,11 +220,4 @@ function showPowerupMessage(msg) {
   setTimeout(() => {
     powerupMsgDiv.style.opacity = "0";
   }, 1200);
-}
-
-// Call this to clear all active powerups (e.g. on game reset)
-export function resetPowerups() {
-  for (const key in activePowerups) {
-    delete activePowerups[key]; // clear all
-  }
 }

@@ -1,62 +1,50 @@
-/* =========================================================================
-   Input Manager
-   Handles Keyboard, Mouse, Touch (Virtual Joystick), and Gamepad (Controller)
-   With Auto-Detection and Visual Aim support
-   ========================================================================= */
+/* src/scripts/input.js */
+import { Joystick } from "./joystick.js";
 
-// Configurable keys (exported so Settings UI can modify them)
 export const customKeys = { left: "a", right: "d", up: "w", down: "s" };
 
-// Current Input State
 export const input = {
-  // Movement vector (-1 to 1)
   move: { x: 0, y: 0 },
-  // Aim Data
-  aim: { 
-    x: 0, 
-    y: 0, 
-    isVector: false, // True for Gamepad/Mobile, False for Mouse (Screen Coords)
-    active: false    // True if user is actively aiming
-  }, 
-  // Boolean states
+  aim: { x: 0, y: 0, isVector: false, active: false }, 
   isSprinting: false,
-  isShooting: false,
   activeDevice: 'keyboard', // 'keyboard', 'gamepad', 'touch'
 };
 
-// Internal state
 const keys = {};
 let mouse = { x: 0, y: 0 };
-let joystick = { x: 0, y: 0, active: false, id: null };
-let aimJoystick = { x: 0, y: 0, active: false, id: null }; // Support for dual stick on mobile if needed
 let gamepadIndex = null;
 let canvasRef = null;
-let handlers = {}; // { onShoot, onReload }
+let handlers = {}; 
 
-// Detect Mobile
-export const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+// Joysticks & Buttons
+let leftStick = null;
+let rightStick = null;
+let mobileShootBtn = null;
 
-/* =========================================================================
-   Helper: Notify Device Change
-   ========================================================================= */
+// Helper to switch device and toggle UI
 function setActiveDevice(device) {
   if (input.activeDevice !== device) {
     input.activeDevice = device;
-    // Dispatch event for UI to pick up
+    
+    // Toggle Mobile UI
+    const showMobile = (device === 'touch');
+    if (leftStick) showMobile ? leftStick.show() : leftStick.hide();
+    if (rightStick) showMobile ? rightStick.show() : rightStick.hide();
+    
+    if (mobileShootBtn) {
+        mobileShootBtn.style.display = showMobile ? "block" : "none";
+    }
+
     window.dispatchEvent(new CustomEvent('device-changed', { detail: { device } }));
   }
 }
 
-/* =========================================================================
-   Initialization
-   ========================================================================= */
 export function initInput(canvas, gameHandlers) {
   canvasRef = canvas;
   handlers = gameHandlers || {};
 
-  // --- Keyboard Listeners ---
+  // --- 1. Keyboard Setup ---
   window.addEventListener("keydown", (e) => {
-    // Ignore key repeats to prevent spamming detection
     if(e.repeat) return;
     setActiveDevice('keyboard');
     
@@ -64,13 +52,9 @@ export function initInput(canvas, gameHandlers) {
     if (e.key.toLowerCase() === customKeys.right.toLowerCase()) keys["ArrowRight"] = true;
     if (e.key.toLowerCase() === customKeys.up.toLowerCase()) keys["ArrowUp"] = true;
     if (e.key.toLowerCase() === customKeys.down.toLowerCase()) keys["ArrowDown"] = true;
-    
     if (e.key === "Shift") input.isSprinting = true;
-
-    // Reload
-    if ((e.key === "r" || e.key === "R") && handlers.onReload) {
-      handlers.onReload();
-    }
+    
+    if ((e.key === "r" || e.key === "R") && handlers.onReload) handlers.onReload();
   });
 
   window.addEventListener("keyup", (e) => {
@@ -78,25 +62,21 @@ export function initInput(canvas, gameHandlers) {
     if (e.key.toLowerCase() === customKeys.right.toLowerCase()) keys["ArrowRight"] = false;
     if (e.key.toLowerCase() === customKeys.up.toLowerCase()) keys["ArrowUp"] = false;
     if (e.key.toLowerCase() === customKeys.down.toLowerCase()) keys["ArrowDown"] = false;
-    
     if (e.key === "Shift") input.isSprinting = false;
   });
 
-  // --- Mouse Listeners ---
+  // --- 2. Mouse Setup ---
   canvas.addEventListener("mousemove", (e) => {
-    // Only switch to mouse if actual movement occurs (prevents jitters)
-    if (Math.abs(e.movementX) > 0 || Math.abs(e.movementY) > 0) {
+    if (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1) {
       setActiveDevice('keyboard'); 
     }
-    
     if (input.activeDevice === 'keyboard') {
       const rect = canvas.getBoundingClientRect();
       mouse.x = e.clientX - rect.left;
       mouse.y = e.clientY - rect.top;
-      
       input.aim.x = mouse.x;
       input.aim.y = mouse.y;
-      input.aim.isVector = false;
+      input.aim.isVector = false; 
       input.aim.active = true;
     }
   });
@@ -108,229 +88,177 @@ export function initInput(canvas, gameHandlers) {
     }
   });
 
-  // --- Gamepad Events ---
+  // --- 3. Gamepad Setup ---
   window.addEventListener("gamepadconnected", (e) => {
-    console.log("Gamepad connected:", e.gamepad.id);
     gamepadIndex = e.gamepad.index;
     setActiveDevice('gamepad');
     showToast("Gamepad Connected");
   });
-
   window.addEventListener("gamepaddisconnected", (e) => {
     if (gamepadIndex === e.gamepad.index) gamepadIndex = null;
-    setActiveDevice('keyboard');
     showToast("Gamepad Disconnected");
   });
 
-  // --- Mobile Joystick Setup ---
-  if (isMobile) {
-    setupJoystick();
-    // Mobile is usually 'touch', but let's wait for interaction to set it
-  }
+  // --- 4. Touch/Joystick Setup ---
+  setupJoysticks();
+  setupMobileButtons();
+  
+  window.addEventListener("touchstart", () => {
+    if (input.activeDevice !== 'touch') setActiveDevice('touch');
+  }, { passive: true });
 }
 
-/* =========================================================================
-   Update Loop (Call this every frame in game loop)
-   ========================================================================= */
+function setupJoysticks() {
+  // Left Stick: Move
+  leftStick = new Joystick("stick-move", document.body, {
+    left: "40px", bottom: "40px"
+  });
+  leftStick.onActive = () => setActiveDevice('touch');
+
+  // Right Stick: Aim Only (No auto-fire)
+  rightStick = new Joystick("stick-aim", document.body, {
+    right: "40px", bottom: "110px" // Moved up slightly to make room for shoot button? Or Keep layout
+  });
+  rightStick.onActive = () => setActiveDevice('touch');
+}
+
+function setupMobileButtons() {
+    mobileShootBtn = document.createElement("div");
+    mobileShootBtn.id = "mobileShootBtn";
+    // Create a big circular button near the aim stick
+    Object.assign(mobileShootBtn.style, {
+        position: "absolute", bottom: "40px", right: "40px",
+        width: "70px", height: "70px", borderRadius: "50%",
+        backgroundColor: "rgba(255, 50, 50, 0.5)", border: "2px solid rgba(255, 255, 255, 0.4)",
+        display: "none", touchAction: "none", zIndex: "1001",
+        backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"white\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H8l4-4 4 4h-3v4h-2z\"/></svg>')",
+        backgroundSize: "50%", backgroundPosition: "center", backgroundRepeat: "no-repeat"
+    });
+    
+    // Add interactions
+    mobileShootBtn.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        setActiveDevice('touch');
+        mobileShootBtn.style.backgroundColor = "rgba(255, 50, 50, 0.8)";
+        
+        if (handlers.onShoot) {
+             const range = 250;
+             // If aiming with stick, use stick dir, else shoot forward/center
+             let tx = 0, ty = 0;
+             if (input.aim.active && input.aim.isVector) {
+                 tx = (input.aim.x * range) + (canvasRef.width / 2);
+                 ty = (input.aim.y * range) + (canvasRef.height / 2);
+             } else {
+                 // Default to shooting where player is facing or straight right? 
+                 // For now, center of screen + slight offset
+                 tx = (canvasRef.width / 2) + 50; 
+                 ty = (canvasRef.height / 2);
+             }
+             handlers.onShoot(tx, ty);
+        }
+    });
+
+    mobileShootBtn.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        mobileShootBtn.style.backgroundColor = "rgba(255, 50, 50, 0.5)";
+    });
+
+    document.body.appendChild(mobileShootBtn);
+}
+
+
 export function updateInput(playerX, playerY, cameraX, cameraY, zoom) {
-  // 1. Reset movement
+  // Reset Move
   input.move.x = 0;
   input.move.y = 0;
 
-  // 2. Poll Gamepad (Highest Priority if active)
+  // --- Priority 1: Gamepad ---
   if (gamepadIndex !== null) {
     const gp = navigator.getGamepads()[gamepadIndex];
     if (gp) {
-      handleGamepadInput(gp, playerX, playerY, cameraX, cameraY, zoom);
+      handleGamepadInput(gp, canvasRef, handlers, zoom);
+      return; 
     }
   }
 
-  // 3. Mobile Joystick
-  // If gamepad isn't giving input, check touch
-  if (input.activeDevice !== 'gamepad' || (Math.abs(input.move.x) < 0.1 && Math.abs(input.move.y) < 0.1)) {
-    if (joystick.active) {
-      setActiveDevice('touch');
-      input.move.x = joystick.x;
-      input.move.y = joystick.y;
-      
-      // Mobile "Look" - usually the right side of screen or a second joystick
-      // For now, let's assume if moving, we aim in movement direction OR keep last aim
-      // Ideally you'd have a second joystick for shooting
+  // --- Priority 2: Touch (Joysticks) ---
+  if (input.activeDevice === 'touch') {
+    // Movement
+    if (Math.abs(leftStick.x) > 0.05 || Math.abs(leftStick.y) > 0.05) {
+      input.move.x = leftStick.x;
+      input.move.y = leftStick.y;
+    }
+
+    // Aiming (Right Stick)
+    if (Math.abs(rightStick.x) > 0.1 || Math.abs(rightStick.y) > 0.1) {
       input.aim.isVector = true;
-      if (Math.abs(input.move.x) > 0.1 || Math.abs(input.move.y) > 0.1) {
-         input.aim.x = input.move.x;
-         input.aim.y = input.move.y;
-         input.aim.active = true;
-      }
-    } 
+      input.aim.active = true;
+      input.aim.x = rightStick.x;
+      input.aim.y = rightStick.y;
+    }
+    return;
   }
 
-  // 4. Keyboard Fallback
-  // If no gamepad/touch movement, use keyboard
+  // --- Priority 3: Keyboard ---
   if (input.activeDevice === 'keyboard') {
-      let kx = 0, ky = 0;
-      if (keys["ArrowLeft"]) kx -= 1;
-      if (keys["ArrowRight"]) kx += 1;
-      if (keys["ArrowUp"]) ky -= 1;
-      if (keys["ArrowDown"]) ky += 1;
+    let kx = 0, ky = 0;
+    if (keys["ArrowLeft"]) kx -= 1;
+    if (keys["ArrowRight"]) kx += 1;
+    if (keys["ArrowUp"]) ky -= 1;
+    if (keys["ArrowDown"]) ky += 1;
 
-      if (kx !== 0 || ky !== 0) {
-        const len = Math.hypot(kx, ky);
-        input.move.x = kx / len;
-        input.move.y = ky / len;
-      }
+    if (kx !== 0 || ky !== 0) {
+      const len = Math.hypot(kx, ky);
+      input.move.x = kx / len;
+      input.move.y = ky / len;
+    }
   }
 }
 
-/* =========================================================================
-   Gamepad Logic
-   ========================================================================= */
-let lastButtonState = {}; 
+// Gamepad Logic
+let lastGpState = { shoot: false, reload: false };
 
-function handleGamepadInput(gp, px, py, cx, cy, zoom) {
+function handleGamepadInput(gp, canvas, handlers, zoom) {
   const DEADZONE = 0.2;
 
-  // --- Movement (Left Stick: Axes 0, 1) ---
-  let lx = gp.axes[0];
-  let ly = gp.axes[1];
-
-  if (Math.abs(lx) < DEADZONE) lx = 0;
-  if (Math.abs(ly) < DEADZONE) ly = 0;
-
-  if (lx !== 0 || ly !== 0) {
+  // Move
+  let lx = gp.axes[0], ly = gp.axes[1];
+  if (Math.abs(lx) > DEADZONE || Math.abs(ly) > DEADZONE) {
     setActiveDevice('gamepad');
     input.move.x = lx;
     input.move.y = ly;
   }
 
-  // --- Aiming (Right Stick: Axes 2, 3) ---
-  let rx = gp.axes[2];
-  let ry = gp.axes[3];
-
+  // Aim
+  let rx = gp.axes[2], ry = gp.axes[3];
   if (Math.abs(rx) > DEADZONE || Math.abs(ry) > DEADZONE) {
     setActiveDevice('gamepad');
     input.aim.isVector = true;
     input.aim.active = true;
     input.aim.x = rx;
     input.aim.y = ry;
-  } else if (input.activeDevice === 'gamepad') {
-    // Keep looking in last direction if stick released, don't snap to 0
-    // (Optional: or set active=false to hide cursor)
   }
 
-  // --- Actions ---
-  // Sprint (L3 or Left Trigger)
-  if (gp.buttons[10].pressed || gp.buttons[6].value > 0.5) {
-     input.isSprinting = true;
-     setActiveDevice('gamepad');
-  } else {
-     input.isSprinting = false;
-  }
-
-  // Shoot (Right Trigger > 0.5 or A Button)
-  const isShootingNow = gp.buttons[7].value > 0.5 || gp.buttons[0].pressed;
+  // Shoot (Explicit Button Press ONLY)
+  // R2 (Button 7) OR A (Button 0)
+  const isShootingBtn = (gp.buttons[7] && gp.buttons[7].value > 0.5) || (gp.buttons[0] && gp.buttons[0].pressed);
   
-  if (isShootingNow && !lastButtonState.shoot) {
-    setActiveDevice('gamepad');
-    // Calculate target 
-    if (input.aim.isVector && input.aim.active) {
-      // Create a virtual target point at a distance
-      const range = 250;
-      // We pass relative coords to onShoot, index.js handles camera
-      // Actually index.js shootBullet expects SCREEN coords or uses logic
-      // We will calculate a "Screen" position relative to center of canvas
-      const targetX = (input.aim.x * range) + (canvasRef.width / 2); 
-      const targetY = (input.aim.y * range) + (canvasRef.height / 2);
-      
-      if (handlers.onShoot) handlers.onShoot(targetX, targetY);
-    } else {
-      // Fallback: Shoot forward if no aim input
-      // ...
-    }
+  // Single fire check
+  if (isShootingBtn && !lastGpState.shoot) {
+     if (handlers.onShoot) {
+        const range = 250;
+        const targetX = (input.aim.x * range) + (canvas.width / 2);
+        const targetY = (input.aim.y * range) + (canvas.height / 2);
+        handlers.onShoot(targetX, targetY);
+     }
   }
-  lastButtonState.shoot = isShootingNow;
+  lastGpState.shoot = isShootingBtn;
 
-  // Reload (X Button / Square -> Index 2)
-  if (gp.buttons[2].pressed && !lastButtonState.reload) {
-    setActiveDevice('gamepad');
-    if (handlers.onReload) handlers.onReload();
+  // Reload (X/Square)
+  if (gp.buttons[2] && gp.buttons[2].pressed && !lastGpState.reload) {
+    handlers.onReload && handlers.onReload();
   }
-  lastButtonState.reload = gp.buttons[2].pressed;
-}
-
-/* =========================================================================
-   Mobile Joystick UI & Logic
-   ========================================================================= */
-function setupJoystick() {
-  // Movement Joystick (Left)
-  const joystickContainer = document.createElement("div");
-  joystickContainer.id = "joystickContainer";
-  Object.assign(joystickContainer.style, {
-    position: "absolute", bottom: "40px", left: "40px", width: "120px", height: "120px",
-    background: "rgba(255,255,255,0.1)", borderRadius: "50%", zIndex: "100",
-    border: "2px solid rgba(255,255,255,0.3)", touchAction: "none"
-  });
-  document.body.appendChild(joystickContainer);
-
-  const stick = document.createElement("div");
-  Object.assign(stick.style, {
-    position: "absolute", width: "50px", height: "50px", background: "rgba(255, 255, 255, 0.8)",
-    borderRadius: "50%", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
-    pointerEvents: "none", boxShadow: "0 0 10px rgba(0,0,0,0.5)"
-  });
-  joystickContainer.appendChild(stick);
-
-  let startX = 0, startY = 0;
-  const maxDist = 35; 
-
-  joystickContainer.addEventListener("touchstart", e => {
-    e.preventDefault();
-    const touch = e.changedTouches[0];
-    joystick.id = touch.identifier;
-    joystick.active = true;
-    startX = touch.clientX;
-    startY = touch.clientY;
-    setActiveDevice('touch');
-  });
-
-  joystickContainer.addEventListener("touchmove", e => {
-    e.preventDefault();
-    if (!joystick.active) return;
-    
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === joystick.id) {
-        const touch = e.changedTouches[i];
-        const dx = touch.clientX - startX;
-        const dy = touch.clientY - startY;
-        
-        const dist = Math.hypot(dx, dy);
-        const clampedDist = Math.min(dist, maxDist);
-        const angle = Math.atan2(dy, dx);
-        
-        const stickX = Math.cos(angle) * clampedDist;
-        const stickY = Math.sin(angle) * clampedDist;
-        stick.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
-
-        joystick.x = Math.cos(angle) * (clampedDist / maxDist);
-        joystick.y = Math.sin(angle) * (clampedDist / maxDist);
-      }
-    }
-  });
-
-  const endDrag = (e) => {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === joystick.id) {
-        joystick.active = false;
-        joystick.id = null;
-        joystick.x = 0;
-        joystick.y = 0;
-        stick.style.transform = `translate(-50%, -50%)`;
-      }
-    }
-  };
-
-  joystickContainer.addEventListener("touchend", endDrag);
-  joystickContainer.addEventListener("touchcancel", endDrag);
+  lastGpState.reload = (gp.buttons[2] && gp.buttons[2].pressed);
 }
 
 function showToast(msg) {
