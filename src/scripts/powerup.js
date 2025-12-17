@@ -1,8 +1,8 @@
 /* src/scripts/powerup.js */
 export let activePowerups = [];
-export let powerups = []; // Items on the ground
+export let powerups = [];
 
-// --- HUD container ---
+// --- HUD Container ---
 let powerupHUD = null;
 
 export function initPowerupHUD() {
@@ -10,18 +10,9 @@ export function initPowerupHUD() {
     powerupHUD = document.createElement("div");
     powerupHUD.id = "powerupHUD";
     Object.assign(powerupHUD.style, {
-      position: "fixed",
-      bottom: "20px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      display: "flex",
-      gap: "14px",
-      zIndex: 2000,
-      fontFamily: "Press Start 2P, sans-serif",
-      fontSize: "14px",
-      color: "#ffe066",
-      textShadow: "2px 2px 6px #000",
-      pointerEvents: "none"
+      position: "fixed", bottom: "20px", left: "50%", transform: "translateX(-50%)",
+      display: "flex", gap: "14px", zIndex: 2000, fontFamily: "Press Start 2P, sans-serif",
+      fontSize: "14px", color: "#ffe066", textShadow: "2px 2px 6px #000", pointerEvents: "none"
     });
     document.body.appendChild(powerupHUD);
   } else {
@@ -32,19 +23,17 @@ export function initPowerupHUD() {
 export function updatePowerupHUD() {
   if (!powerupHUD) return;
   powerupHUD.innerHTML = "";
-
   const now = Date.now();
+  
+  // Filter out expired powerups
   activePowerups = activePowerups.filter(p => p.expireTime > now);
 
   activePowerups.forEach(p => {
     const timeLeft = Math.ceil((p.expireTime - now) / 1000);
     const div = document.createElement("div");
     Object.assign(div.style, {
-      padding: "6px 10px",
-      borderRadius: "6px",
-      background: "rgba(0,0,0,0.6)",
-      border: `1px solid ${getColorForType(p.type)}`,
-      color: getColorForType(p.type)
+      padding: "6px 10px", borderRadius: "6px", background: "rgba(0,0,0,0.6)",
+      border: `1px solid ${getColorForType(p.type)}`, color: getColorForType(p.type)
     });
     div.textContent = `${p.type}: ${timeLeft}s`;
     powerupHUD.appendChild(div);
@@ -55,110 +44,80 @@ function getColorForType(type) {
   if (type === "Double") return "yellow";
   if (type === "Immune") return "aqua";
   if (type === "Triple") return "violet";
+  if (type === "Critical") return "#ff3333";
   return "#fff";
 }
 
-// --- FIX: Comprehensive Reset Function ---
-export function resetPowerups() {
-  // 1. Clear active effects
-  activePowerups = [];
-  
-  // 2. Clear items on ground
-  powerups = [];
-
-  // 3. Clear HUD
-  if (powerupHUD) {
-    powerupHUD.innerHTML = "";
-    powerupHUD.style.display = "none";
-  }
-}
-
+// --- Powerup Definitions ---
 export const powerupTypes = [
   {
-    type: "ammo",
-    color: "blue",
-    effect: (player, updateAmmoDisplay, showPowerupMessage) => {
+    type: "ammo", color: "blue",
+    effect: (player, updateAmmo, showMsg) => {
       player.reserveAmmo += 42;
-      updatePowerupHUD();
-      if (updateAmmoDisplay) updateAmmoDisplay();
-      if (showPowerupMessage) showPowerupMessage("+42 Ammo");
+      if (updateAmmo) updateAmmo();
+      if (showMsg) showMsg("+42 Ammo");
     }
   },
   {
-    type: "health",
-    color: "green",
-    effect: (player, _, showPowerupMessage, updateHealthBar) => {
+    type: "health", color: "green",
+    effect: (player, _, showMsg, updateHP) => {
       if (player.health < player.maxHealth) {
         player.health = Math.min(player.maxHealth, player.health + 1);
-        updatePowerupHUD();
-        if (updateHealthBar) updateHealthBar();
-        if (showPowerupMessage) showPowerupMessage("+1 Health");
+        if (updateHP) updateHP();
+        if (showMsg) showMsg("+1 Health");
       } else {
-        if (showPowerupMessage) showPowerupMessage("Health Full");
+        if (showMsg) showMsg("Health Full");
       }
     }
   },
   {
-    type: "double",
-    color: "yellow",
-    effect: (player, _, showPowerupMessage) => {
-      const duration = 10000; 
-      const expire = Date.now() + duration;
-      activePowerups = activePowerups.filter(p => p.type !== "Double");
-      activePowerups.push({ type: "Double", expireTime: expire });
-      
-      player.doubleDamage = true;
-      updatePowerupHUD();
-      if (showPowerupMessage) showPowerupMessage("Double Damage!");
-
-      setTimeout(() => {
-        if (!activePowerups.some(p => p.type === "Double" && p.expireTime > Date.now())) {
-          player.doubleDamage = false;
-        }
-      }, duration);
+    type: "double", color: "yellow",
+    effect: (player, _, showMsg) => {
+      applyTimedPowerup(player, "Double", "doubleDamage", showMsg, "Double Damage!");
     }
   },
   {
-    type: "immunity",
-    color: "aqua",
-    effect: (player, _, showPowerupMessage) => {
-      const duration = 10000; 
-      const expire = Date.now() + duration;
-      activePowerups = activePowerups.filter(p => p.type !== "Immune");
-      activePowerups.push({ type: "Immune", expireTime: expire });
-      
-      player.immune = true;
-      updatePowerupHUD();
-      if (showPowerupMessage) showPowerupMessage("Immune!");
-
-      setTimeout(() => {
-        if (!activePowerups.some(p => p.type === "Immune" && p.expireTime > Date.now())) {
-          player.immune = false;
-        }
-      }, duration);
+    type: "immunity", color: "aqua",
+    effect: (player, _, showMsg) => {
+      applyTimedPowerup(player, "Immune", "immune", showMsg, "Immune!");
     }
   },
   {
-    type: "triple",
-    color: "violet",
-    effect: (player, _, showPowerupMessage) => {
-      const duration = 10000;
-      const expire = Date.now() + duration;
-      activePowerups = activePowerups.filter(p => p.type !== "Triple");
-      activePowerups.push({ type: "Triple", expireTime: expire });
-      
-      player.tripleShot = true;
-      updatePowerupHUD();
-      if (showPowerupMessage) showPowerupMessage("Triple Shot!");
-
-      setTimeout(() => {
-        if (!activePowerups.some(p => p.type === "Triple" && p.expireTime > Date.now())) {
-          player.tripleShot = false;
-        }
-      }, duration);
+    type: "triple", color: "violet",
+    effect: (player, _, showMsg) => {
+      applyTimedPowerup(player, "Triple", "tripleShot", showMsg, "Triple Shot!");
+    }
+  },
+  {
+    // NEW: Critical Hit Powerup
+    type: "critical", color: "#ff3333",
+    effect: (player, _, showMsg) => {
+      applyTimedPowerup(player, "Critical", "alwaysCrit", showMsg, "Max Crit!");
     }
   }
 ];
+
+// Helper for temporary effects
+function applyTimedPowerup(player, typeName, flagName, showMsg, msgText) {
+  const duration = 10000; 
+  const expire = Date.now() + duration;
+  
+  // Remove existing same-type to refresh timer
+  activePowerups = activePowerups.filter(p => p.type !== typeName);
+  activePowerups.push({ type: typeName, expireTime: expire });
+  
+  player[flagName] = true;
+  updatePowerupHUD();
+  if (showMsg) showMsg(msgText);
+  
+  // Auto-expire logic (safety check)
+  setTimeout(() => {
+    const stillActive = activePowerups.some(p => p.type === typeName && p.expireTime > Date.now());
+    if (!stillActive) {
+      player[flagName] = false;
+    }
+  }, duration);
+}
 
 export function spawnPowerups() {
   powerups.length = 0;
@@ -168,24 +127,20 @@ export function spawnPowerups() {
     powerups.push({
       x: Math.random() * (window.innerWidth - 30),
       y: Math.random() * (window.innerHeight - 30),
-      width: 24,
-      height: 24,
-      type: pType
+      width: 24, height: 24, type: pType
     });
   }
 }
 
-export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled, powerUpSound, updateHealthBar, camera = { x: 0, y: 0 }) {
+export function drawAndHandlePowerups(ctx, player, updateAmmo, sfxEnabled, powerUpSound, updateHP, camera) {
   for (let i = powerups.length - 1; i >= 0; i--) {
     let p = powerups[i];
     if (
-      player.x < p.x + p.width &&
-      player.x + player.width > p.x &&
-      player.y < p.y + p.height &&
-      player.y + player.height > p.y
+      player.x < p.x + p.width && player.x + player.width > p.x &&
+      player.y < p.y + p.height && player.y + player.height > p.y
     ) {
-      p.type.effect(player, updateAmmoDisplay, showPowerupMessage, updateHealthBar);
-      if (updateHealthBar) updateHealthBar();
+      p.type.effect(player, updateAmmo, showPowerupMessage, updateHP);
+      if (updateHP) updateHP();
       powerups.splice(i, 1);
       if (sfxEnabled && powerUpSound) {
         powerUpSound.currentTime = 0;
@@ -193,7 +148,6 @@ export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled
       }
     }
   }
-  
   powerups.forEach(p => {
     ctx.fillStyle = p.type.color;
     ctx.fillRect(p.x - camera.x, p.y - camera.y, p.width, p.height);
@@ -203,6 +157,7 @@ export function drawAndHandlePowerups(ctx, player, updateAmmoDisplay, sfxEnabled
   });
 }
 
+// Floating Text Message
 let powerupMsgDiv = null;
 function showPowerupMessage(msg) {
   if (!powerupMsgDiv) {
@@ -217,7 +172,15 @@ function showPowerupMessage(msg) {
   }
   powerupMsgDiv.textContent = msg;
   powerupMsgDiv.style.opacity = "1";
-  setTimeout(() => {
-    powerupMsgDiv.style.opacity = "0";
-  }, 1200);
+  setTimeout(() => { powerupMsgDiv.style.opacity = "0"; }, 1200);
+}
+
+// Reset State
+export function resetPowerups() {
+  activePowerups = [];
+  powerups = [];
+  if (powerupHUD) { 
+      powerupHUD.innerHTML = ""; 
+      powerupHUD.style.display = "none"; 
+  }
 }

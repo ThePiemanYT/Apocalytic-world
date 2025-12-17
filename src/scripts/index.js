@@ -66,7 +66,20 @@ let upgradeScreenShown = false;
 let usedPowerup = false;
 let lastTime = 0; 
 
+// --- FX State (Juice) ---
+let shakeAmount = 0;
+let floatingTexts = []; // {x, y, text, color, life, size}
+
+function spawnFloatingText(x, y, text, color = "#fff", size = 12) {
+    floatingTexts.push({ x, y, text, color, size, life: 60 });
+}
+
+function triggerShake(amount) {
+    shakeAmount = amount;
+}
+
 // --- Core Gameplay Functions ---
+
 function shootBullet(targetX, targetY) {
   if (!gameRunning || player.ammo <= 0 || isReloading) return;
 
@@ -77,6 +90,7 @@ function shootBullet(targetX, targetY) {
   const cy = player.y + player.height / 2;
   const speed = 7;
 
+  // Calculate World Coordinates from Screen Input
   const worldX = targetX / zoom + camera.x;
   const worldY = targetY / zoom + camera.y;
   const angle = Math.atan2(worldY - cy, worldX - cx);
@@ -86,7 +100,8 @@ function shootBullet(targetX, targetY) {
       cx, cy, 
       Math.cos(ang) * speed, Math.sin(ang) * speed,
       getPlayerDamage(),
-      player.doubleDamage ? "orange" : "yellow"
+      player.doubleDamage ? "orange" : "yellow",
+      false // IsCrit flag (calculated on hit usually, or here if needed)
     );
   };
 
@@ -96,6 +111,8 @@ function shootBullet(targetX, targetY) {
     fire(angle);
   }
 
+  // Visual Feedack
+  triggerShake(2); // Small shake on shoot
   playSound("shoot", 50); 
   window.onBulletFired && window.onBulletFired();
 }
@@ -122,6 +139,7 @@ function gameLoop(timestamp) {
   if (!lastTime) lastTime = timestamp;
   const deltaTime = timestamp - lastTime;
   lastTime = timestamp;
+  
   let timeScale = deltaTime / (1000 / 60);
   if (timeScale > 4) timeScale = 4;
 
@@ -134,45 +152,78 @@ function gameLoop(timestamp) {
   updateInput(player.x, player.y, camera.x, camera.y, zoom);
   player.sprinting = input.isSprinting;
 
-  // 2. Physics & Logic
-  if (player.sprinting && player.stamina > 0) {
-    player.speed = player.sprintSpeed;
-    player.stamina -= 0.5 * timeScale;
-    if (player.stamina < 0) player.stamina = 0;
+  // 2. Dash Logic
+  if (player.dashCooldown > 0) player.dashCooldown -= deltaTime;
+  
+  if (player.dashActive) {
+      player.dashTime -= deltaTime;
+      if (player.dashTime <= 0) {
+          player.dashActive = false;
+          player.immune = false; // End invincibility
+      }
+  } else if (input.dashPressed && player.dashCooldown <= 0 && (input.move.x !== 0 || input.move.y !== 0)) {
+      // Start Dash
+      player.dashActive = true;
+      player.dashTime = 200; // 200ms duration
+      player.dashCooldown = 1500; // 1.5s cooldown
+      player.immune = true;
+      playSound("select", 0); // Placeholder dash sound
+      // Create a burst of speed
+  }
+
+  // 3. Movement Physics
+  let currentSpeed = player.normalSpeed;
+  
+  if (player.dashActive) {
+      currentSpeed = player.sprintSpeed * 3.5; // High speed dash
+  } else if (player.sprinting && player.stamina > 0) {
+      currentSpeed = player.sprintSpeed;
+      player.stamina -= 0.5 * timeScale;
+      if (player.stamina < 0) player.stamina = 0;
   } else {
-    player.speed = player.normalSpeed;
-    const moving = Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05;
-    player.stamina += (moving ? 0.15 : 0.25) * timeScale;
-    if (player.stamina > player.maxStamina) player.stamina = player.maxStamina;
+      currentSpeed = player.normalSpeed;
+      const moving = Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05;
+      player.stamina += (moving ? 0.15 : 0.25) * timeScale;
+      if (player.stamina > player.maxStamina) player.stamina = player.maxStamina;
   }
   if (player.stamina === 0) player.sprinting = false;
 
+  // Apply Velocity
   if (Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05) {
-      player.x += input.move.x * player.speed * timeScale;
-      player.y += input.move.y * player.speed * timeScale;
+      player.x += input.move.x * currentSpeed * timeScale;
+      player.y += input.move.y * currentSpeed * timeScale;
       player.x = Math.max(0, Math.min(worldWidth - player.width, player.x));
       player.y = Math.max(0, Math.min(worldHeight - player.height, player.y));
   }
 
+  // 4. Updates
   updateHUD();
   updateCamera(player);
   
+  // Bullets
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
       b.x += b.dx * timeScale;
       b.y += b.dy * timeScale;
-      if (Math.hypot(b.x - player.x, b.y - player.y) > 2000) b.active = false;
+      if (Math.hypot(b.x - player.x, b.y - player.y) > 2000) {
+        b.active = false; 
+      }
     }
   }
 
+  // Enemies & Collisions
   import("./waves.js").then(module => {
      updateEnemies(player, canvas, module.zombiesData || zombiesData, timeScale);
      
      const sfxWrapper = { currentTime: 0, play: () => { playSound("explosion", 80); return Promise.resolve(); } };
      const hitWrapper = { currentTime: 0, play: () => { playSound("hitHurt", 50); return Promise.resolve(); } };
+     
+     // Pass effects callbacks to enemy.js
+     const effects = { spawnText: spawnFloatingText, shake: triggerShake };
 
-     handleBulletCollisions(bullets, true, sfxWrapper, { value: score }, document.getElementById("score"), module.zombiesData || zombiesData, canvas, hitWrapper, player);
+     handleBulletCollisions(bullets, true, sfxWrapper, { value: score }, document.getElementById("score"), module.zombiesData || zombiesData, canvas, hitWrapper, player, effects);
+     
      setScore(parseInt(document.getElementById("score").textContent.replace(/\D/g, "")) || 0);
   });
   
@@ -180,10 +231,11 @@ function gameLoop(timestamp) {
   updateWaveLogic();
   autoReload();
 
+  // Collisions (Player)
   if (handlePlayerCollisions(player, updateHUD, endGame)) return;
   if (handleProjectilePlayerCollision(player, updateHUD, endGame)) return;
 
-  // Wave Logic
+  // Wave Clear Check
   if (!waveSpawning && enemies.length === 0) {
     if (!waveClearTimeout) {
       waveClearTimeout = setTimeout(() => {
@@ -203,16 +255,38 @@ function gameLoop(timestamp) {
     }
   }
 
-  // Draw
+  // 5. Drawing
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Screen Shake Application
+  ctx.save();
+  if (shakeAmount > 0) {
+      const sx = (Math.random() - 0.5) * shakeAmount;
+      const sy = (Math.random() - 0.5) * shakeAmount;
+      ctx.translate(sx, sy);
+      shakeAmount *= 0.9; // Dampen shake
+      if (shakeAmount < 0.5) shakeAmount = 0;
+  }
+
   ctx.drawImage(gameBG, 0, 0, canvas.width, canvas.height);
   
   ctx.save();
   ctx.scale(zoom, zoom);
   
+  // Draw Player (Ghost effect if dashing)
+  if (player.dashActive) {
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = "white";
+      // Draw trails
+      ctx.fillRect(Math.round(player.x - camera.x - input.move.x*15), Math.round(player.y - camera.y - input.move.y*15), player.width, player.height);
+      ctx.fillRect(Math.round(player.x - camera.x - input.move.x*30), Math.round(player.y - camera.y - input.move.y*30), player.width, player.height);
+      ctx.globalAlpha = 1.0;
+  }
+
   ctx.fillStyle = "cyan";
   ctx.fillRect(Math.round(player.x - camera.x), Math.round(player.y - camera.y), player.width, player.height);
 
+  // Draw Bullets
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
@@ -225,10 +299,33 @@ function gameLoop(timestamp) {
   drawProjectiles(ctx, camera);
   drawAndHandlePowerups(ctx, player, updateHUD, true, sounds.powerUp, undefined, camera);
   drawReticle(ctx);
-
-  ctx.restore();
   
-  // Update Powerup HUD (Duration Timer)
+  // Draw Floating Texts
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      const ft = floatingTexts[i];
+      ft.y -= 0.5 * timeScale; // Float up
+      ft.life -= 1 * timeScale;
+      
+      ctx.globalAlpha = Math.max(0, ft.life / 40);
+      ctx.fillStyle = ft.color;
+      ctx.font = `${ft.size}px 'Press Start 2P', sans-serif`;
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 3;
+      
+      const dx = ft.x - camera.x;
+      const dy = ft.y - camera.y;
+      
+      ctx.strokeText(ft.text, dx, dy);
+      ctx.fillText(ft.text, dx, dy);
+      
+      if (ft.life <= 0) floatingTexts.splice(i, 1);
+  }
+  ctx.globalAlpha = 1.0;
+
+  ctx.restore(); // Undo scale
+  ctx.restore(); // Undo shake
+  
+  // Update Powerup Timer UI
   try { updatePowerupHUD(); } catch (e) {}
   
   requestAnimationFrame(gameLoop);
@@ -236,7 +333,8 @@ function gameLoop(timestamp) {
 
 function checkNextWave() {
   upgradeScreenShown = false;
-  if(!startWave(currentWave + 1)) endGame(true);
+  const success = startWave(currentWave + 1);
+  if (!success) endGame(true); 
 }
 
 function drawReticle(ctx) {
@@ -263,23 +361,28 @@ function drawReticle(ctx) {
   ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI*2); ctx.fill();
 }
 
-// --- Start/Stop ---
+// --- Game Control ---
 async function startGame() {
   hideMenuBackground();
   toggleAnimation(false);
   document.getElementById("menu").style.display = "none";
   document.getElementById("gameOver").style.display = "none";
-  if(document.getElementById("versionLabel")) document.getElementById("versionLabel").style.display = "none";
+  
+  const vLabel = document.getElementById("versionLabel");
+  if (vLabel) vLabel.style.display = "none";
   
   playSound("select");
-  if (musicEnabled) { backgroundMusic.currentTime = 0; backgroundMusic.play().catch(()=>{}); }
+  if (musicEnabled) {
+    backgroundMusic.currentTime = 0;
+    backgroundMusic.play().catch(()=>{});
+  }
 
   await loadGameData();
   resetGame();
   
   setGameRunning(true);
   initUI();
-  initPowerupHUD(); // Initialize HUD element
+  initPowerupHUD();
   toggleGameUI(true);
   initInput(canvas, { onShoot: shootBullet, onReload: tryReload });
   startWave(0);
@@ -295,6 +398,8 @@ function resetGame() {
   resetWaveState();
   resetPowerups();
   updateHUD();
+  shakeAmount = 0;
+  floatingTexts = [];
 }
 
 function endGame(victory = false) {
@@ -313,15 +418,25 @@ function endGame(victory = false) {
 
 function quitGame() { playSound("select"); window.close(); }
 function restartGame() { setPaused(false); hidePauseOverlay(); startGame(); }
+
 function backToMenu() {
-  setPaused(false); hidePauseOverlay(); setGameRunning(false);
+  setPaused(false); 
+  hidePauseOverlay();
+  setGameRunning(false);
+  
   document.getElementById("gameOver").style.display = "none";
   document.getElementById("menu").style.display = "flex";
-  if(document.getElementById("menu1")) document.getElementById("menu1").style.display = "flex";
-  if(document.getElementById("versionLabel")) document.getElementById("versionLabel").style.display = "block";
+  
+  const menu1 = document.getElementById("menu1");
+  if(menu1) menu1.style.display = "flex";
+
+  const vLabel = document.getElementById("versionLabel");
+  if (vLabel) vLabel.style.display = "block";
+
   showMenuBackground();
   toggleAnimation(true);
   playSound("select");
+  
   toggleGameUI(false);
   resetPowerups();
 }
@@ -350,11 +465,30 @@ function showPauseOverlay() {
     document.getElementById("pauseOverlay").style.display = "flex";
   }
 }
-function hidePauseOverlay() { const o = document.getElementById("pauseOverlay"); if(o) o.style.display = "none"; }
-function pauseGame() { if (!gameRunning || paused) return; setPaused(true); showPauseOverlay(); backgroundMusic.pause(); }
-function resumeGame() { if (!paused) return; setPaused(false); hidePauseOverlay(); if(musicEnabled) backgroundMusic.play().catch(()=>{}); lastTime = 0; requestAnimationFrame(gameLoop); }
 
-// Audio
+function hidePauseOverlay() {
+  const o = document.getElementById("pauseOverlay");
+  if(o) o.style.display = "none";
+}
+
+function pauseGame() {
+  if (!gameRunning || paused) return;
+  setPaused(true);
+  showPauseOverlay();
+  backgroundMusic.pause();
+}
+
+function resumeGame() {
+  if (!paused) return;
+  setPaused(false);
+  hidePauseOverlay();
+  if(musicEnabled) backgroundMusic.play().catch(()=>{});
+  lastTime = 0; 
+  requestAnimationFrame(gameLoop);
+}
+
+// --- Settings & UI Global Hooks ---
+// (Required for HTML buttons to access module functions)
 const musicSlider = document.getElementById("musicSlider");
 if(musicSlider) {
     musicSlider.addEventListener("input", () => {
@@ -363,7 +497,7 @@ if(musicSlider) {
     });
 }
 
-// Control Cycle
+// Control Cycling
 let controlMode = "Keyboard";
 const controlModes = ["Keyboard", "Mobile", "Controller"];
 
@@ -397,7 +531,7 @@ window.addEventListener("device-changed", (e) => {
   }
 });
 
-// UI Open/Close
+// Menu Panel Wrappers
 function openSettings() { const m = document.getElementById("menu"); if (m) m.style.display = "none"; const s = document.getElementById("settings"); if (s) s.style.display = "flex"; hideAllSections(); showMainButtons(); playSound("select"); }
 function closeSettings() { const s = document.getElementById("settings"); if (s) s.style.display = "none"; const m = document.getElementById("menu"); if (m) m.style.display = "flex"; playSound("select"); }
 
@@ -426,7 +560,7 @@ function toggleFullscreen() {
   }
 }
 
-// Exports
+// Global Assignments
 window.startGame = startGame;
 window.quitGame = quitGame;
 window.restartGame = restartGame;
@@ -443,6 +577,7 @@ window.openCredit = openCredit;
 window.backCredit = backCredit;
 window.toggleFullscreen = toggleFullscreen;
 
+// Initialization
 window.addEventListener("DOMContentLoaded", () => {
   initUI();
   toggleGameUI(false);

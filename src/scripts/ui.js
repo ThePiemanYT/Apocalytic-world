@@ -38,7 +38,6 @@ export function initUI() {
   Object.assign(staminaFill.style, { height: "100%", width: "100%", background: "linear-gradient(90deg, #80dfff, #4fc3f7)" });
   staminaBar.appendChild(staminaFill);
   
-  // Powerup HUD placement managed in powerup.js, but we ensure cleanliness here
   setupSettingsListeners();
 }
 
@@ -50,7 +49,6 @@ export function toggleGameUI(visible) {
     if (waveDisplay) waveDisplay.style.display = displayVal;
     if (healthBarContainer) healthBarContainer.style.display = displayVal;
     
-    // Created elements
     if (ammoDisplay) ammoDisplay.style.display = displayVal;
     if (staminaBar) staminaBar.style.display = displayVal;
 }
@@ -79,23 +77,14 @@ let helpData = null;
 let aboutData = null;
 
 export function openPanel(id) {
-  // Hide other menu panels
-  document.querySelectorAll(".menuPanel").forEach(p => { 
-      p.style.display = "none"; 
-      p.setAttribute("inert", ""); 
-  });
-
-  // Hide Main Menu Buttons (Fix for background overlap issue)
+  document.querySelectorAll(".menuPanel").forEach(p => { p.style.display = "none"; p.setAttribute("inert", ""); });
   const menu1 = document.getElementById("menu1");
   if (menu1) menu1.style.display = "none";
 
   const el = document.getElementById(id);
   if (el) {
-    el.style.display = "flex"; 
-    el.removeAttribute("inert");
+    el.style.display = "flex"; el.removeAttribute("inert");
     panelStack.push(id);
-    
-    // Fetch data if needed
     if (id === "helpPanel") loadHelpData();
     if (id === "aboutPanel") loadAboutData();
   }
@@ -110,12 +99,9 @@ export function closePanel(id) {
   const prev = panelStack[panelStack.length - 1];
 
   if (prev) {
-    // Go back to previous panel (e.g., Settings -> Controls)
     const prevEl = document.getElementById(prev);
     if(prevEl) { prevEl.style.display = "flex"; prevEl.removeAttribute("inert"); }
   } else {
-    // No more panels in stack
-    // If we are NOT in game, show the Main Menu buttons again
     if (!gameRunning) {
         const menu1 = document.getElementById("menu1");
         if (menu1) menu1.style.display = "flex";
@@ -124,98 +110,70 @@ export function closePanel(id) {
   playSound("select");
 }
 
-// --- Data Fetching (Help & Credits) ---
-
+// --- Data Fetching ---
 async function loadHelpData() {
   const helpTabs = document.getElementById("helpTabs");
   const helpContent = document.getElementById("helpContent");
   if (!helpTabs) return;
-
-  // Only fetch if we haven't already
   if (!helpData) {
     try {
         const res = await fetch("data/help.json");
-        if (!res.ok) throw new Error("Failed to load help");
         helpData = await res.json();
     } catch (e) {
         if(helpContent) helpContent.innerHTML = "<p>Error loading help data.</p>";
         return;
     }
   }
-
-  // Render Tabs
   helpTabs.innerHTML = "";
   Object.keys(helpData).forEach(key => {
       const btn = document.createElement("button");
       btn.textContent = key;
-      btn.onclick = () => renderHelpContent(key);
+      btn.onclick = () => {
+          helpContent.innerHTML = `<h4 style="color:#ffd166">${helpData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${helpData[key].content}</p>`;
+      };
       helpTabs.appendChild(btn);
   });
-
-  // Select first tab by default
-  const firstKey = Object.keys(helpData)[0];
-  if (firstKey) renderHelpContent(firstKey);
-}
-
-function renderHelpContent(key) {
-    const helpContent = document.getElementById("helpContent");
-    const entry = helpData[key];
-    if (entry && helpContent) {
-        helpContent.innerHTML = `
-            <h4 style="color:#ffd166">${entry.title}</h4>
-            <p style="color:#ddd; font-size:13px; line-height:1.6;">${entry.content}</p>
-        `;
-    }
+  if (Object.keys(helpData)[0]) helpTabs.firstChild.click();
 }
 
 async function loadAboutData() {
     const aboutTabs = document.getElementById("aboutTabs");
     const aboutContent = document.getElementById("aboutContent");
     if (!aboutTabs) return;
-
     if (!aboutData) {
         try {
             const res = await fetch("data/about.json");
-            if (!res.ok) throw new Error("Failed to load credits");
             aboutData = await res.json();
         } catch (e) {
             if(aboutContent) aboutContent.innerHTML = "<p>Error loading credits.</p>";
             return;
         }
     }
-
     aboutTabs.innerHTML = "";
     Object.keys(aboutData).forEach(key => {
         const btn = document.createElement("button");
-        btn.textContent = key;
-        btn.onclick = () => renderAboutContent(key);
+        btn.textContent = key === "1" ? "Overview" : (aboutData[key].title || key);
+        if(aboutData[key].title === "Overview") btn.textContent = "Game";
+        
+        btn.onclick = () => {
+            const txt = aboutData[key].content ? aboutData[key].content.replace(/\n/g, "<br>") : "";
+            aboutContent.innerHTML = `<h4 style="color:#ffd166">${aboutData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`;
+        };
         aboutTabs.appendChild(btn);
     });
-
-    const firstKey = Object.keys(aboutData)[0];
-    if (firstKey) renderAboutContent(firstKey);
+    if (Object.keys(aboutData)[0]) aboutTabs.firstChild.click();
 }
-
-function renderAboutContent(key) {
-    const aboutContent = document.getElementById("aboutContent");
-    const entry = aboutData[key];
-    if (entry && aboutContent) {
-        // Handle newlines if present in JSON content
-        const text = entry.content ? entry.content.replace(/\n/g, "<br>") : "";
-        aboutContent.innerHTML = `
-            <h4 style="color:#ffd166">${entry.title}</h4>
-            <p style="color:#ddd; font-size:13px; line-height:1.6;">${text}</p>
-        `;
-    }
-}
-
 
 // --- Upgrade Screen ---
 export function openUpgradeScreen(onComplete) {
   const upgradeKeys = [
-    { key: "damage", label: "Damage" }, { key: "health", label: "Health" },
-    { key: "speed", label: "Speed" }, { key: "magazine", label: "Magazine" },
-    { key: "knockback", label: "Knockback" }
+    { key: "damage", label: "Damage" }, 
+    { key: "health", label: "Health" },
+    { key: "speed", label: "Speed" }, 
+    { key: "magazine", label: "Magazine" },
+    // NEW: Replaced Knockback with Crit Stats
+    { key: "critChance", label: "Crit Chance" },
+    { key: "critDamage", label: "Crit Dmg" }
   ];
   const maxPerUpgrade = 5;
   const pickLimit = 3;
@@ -262,7 +220,7 @@ export function openUpgradeScreen(onComplete) {
           }
           blocksHTML += "</div>";
 
-          row.innerHTML = `<span style="font-size:14px;text-align:left;min-width:100px;">${u.label}</span>${blocksHTML}`;
+          row.innerHTML = `<span style="font-size:12px;text-align:left;min-width:120px;">${u.label}</span>${blocksHTML}`;
           
           const btn = document.createElement("button");
           btn.textContent = "+";
@@ -280,7 +238,6 @@ export function openUpgradeScreen(onComplete) {
               refresh();
               if (picks >= pickLimit) { 
                   modal.remove(); 
-                  // CRITICAL FIX: Ensure game resumes
                   if(onComplete) onComplete(); 
               }
           };
