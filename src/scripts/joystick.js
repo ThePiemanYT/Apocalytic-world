@@ -4,7 +4,7 @@ export class Joystick {
     this.padding = options.padding || 0.2;
     this.x = 0.0;
     this.y = 0.0;
-    this.active = false; // Track if currently being touched
+    this.active = false;
     this._pointerId = -1;
 
     // DOM Creation
@@ -12,7 +12,6 @@ export class Joystick {
     this._panel.id = id || "joystick";
     this._panel.classList.add("joystick-panel");
     
-    // Apply custom styles if provided
     if (options.left) this._panel.style.left = options.left;
     if (options.right) this._panel.style.right = options.right;
     if (options.bottom) this._panel.style.bottom = options.bottom;
@@ -23,7 +22,6 @@ export class Joystick {
 
     (parent || document.body).appendChild(this._panel);
 
-    // Pointer event handlers
     this._onPointerDown = (e) => this._onPointerDown(e);
     this._onPointerMove = (e) => this._onPointerMove(e);
     this._onPointerUp = (e) => this._onPointerUp(e);
@@ -34,16 +32,19 @@ export class Joystick {
     this._panel.addEventListener("pointerup", this._onPointerUp);
     this._panel.addEventListener("pointercancel", this._onPointerCancel);
 
-    // Prevent gestures/scrolling
     this._panel.style.touchAction = "none";
 
-    // Initial state: Hidden by default until mobile mode is detected
     this.hide(); 
-    requestAnimationFrame(() => this.resetThumb());
+    // Removed the initial requestAnimationFrame here as it fails on hidden elements
   }
 
   hide() { this._panel.style.display = "none"; }
-  show() { this._panel.style.display = "block"; }
+  
+  show() { 
+      this._panel.style.display = "block"; 
+      // FIX: Recalculate thumb position immediately when showing
+      requestAnimationFrame(() => this.resetThumb());
+  }
 
   _onPointerDown(e) {
     if (e.isPrimary === false || (e.pointerType === "mouse" && e.button !== 0)) return;
@@ -55,7 +56,6 @@ export class Joystick {
 
     this._moveFromClient(e.clientX, e.clientY);
     
-    // Trigger callback if needed
     if (this.onActive) this.onActive();
     
     e.preventDefault();
@@ -106,7 +106,6 @@ export class Joystick {
     const x = Math.max(-1.0, Math.min(1.0, (left + halfThumbWidth - px) / (px / 2.0)));
     const y = -Math.max(-1.0, Math.min(1.0, (top + halfThumbHeight - py) / (py / 2.0)));
 
-    // Deadzone logic
     this.x = Math.abs(x) < this.padding ? 0.0 : x;
     this.y = Math.abs(y) < this.padding ? 0.0 : y;
   }

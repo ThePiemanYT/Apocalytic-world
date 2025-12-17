@@ -8,7 +8,7 @@ export const input = {
   aim: { x: 0, y: 0, isVector: false, active: false }, 
   isSprinting: false,
   activeDevice: 'keyboard', 
-  dashPressed: false // New Dash flag
+  dashPressed: false
 };
 
 const keys = {};
@@ -26,8 +26,11 @@ function setActiveDevice(device) {
   if (input.activeDevice !== device) {
     input.activeDevice = device;
     const showMobile = (device === 'touch');
+    
+    // Joystick rendering fix is handled inside .show() now
     if (leftStick) showMobile ? leftStick.show() : leftStick.hide();
     if (rightStick) showMobile ? rightStick.show() : rightStick.hide();
+    
     if (mobileShootBtn) mobileShootBtn.style.display = showMobile ? "block" : "none";
     if (mobileDashBtn) mobileDashBtn.style.display = showMobile ? "block" : "none";
     
@@ -49,7 +52,9 @@ export function initInput(canvas, gameHandlers) {
     if (e.key.toLowerCase() === customKeys.up.toLowerCase()) keys["ArrowUp"] = true;
     if (e.key.toLowerCase() === customKeys.down.toLowerCase()) keys["ArrowDown"] = true;
     if (e.key === "Shift") input.isSprinting = true;
-    if (e.code === "Space") input.dashPressed = true; // Dash on Space
+    
+    // ADDED: Dash on Space OR 'Q'
+    if (e.code === "Space" || e.code === "KeyQ") input.dashPressed = true;
     
     if ((e.key === "r" || e.key === "R") && handlers.onReload) handlers.onReload();
   });
@@ -60,7 +65,9 @@ export function initInput(canvas, gameHandlers) {
     if (e.key.toLowerCase() === customKeys.up.toLowerCase()) keys["ArrowUp"] = false;
     if (e.key.toLowerCase() === customKeys.down.toLowerCase()) keys["ArrowDown"] = false;
     if (e.key === "Shift") input.isSprinting = false;
-    if (e.code === "Space") input.dashPressed = false;
+    
+    // ADDED: Release Dash on Space OR 'Q'
+    if (e.code === "Space" || e.code === "KeyQ") input.dashPressed = false;
   });
 
   // --- Mouse ---
@@ -241,7 +248,9 @@ function handleGamepadInput(gp, canvas, handlers, zoom) {
   }
   lastGpState.reload = (gp.buttons[2] && gp.buttons[2].pressed);
   
-  // Dash (Button 1 'B' or L1/L2)
-  const isDash = (gp.buttons[1] && gp.buttons[1].pressed) || (gp.buttons[4] && gp.buttons[4].pressed);
+  // ADDED: Dash on B (1), LB (4), or LT (6)
+  const isDash = (gp.buttons[1] && gp.buttons[1].pressed) 
+              || (gp.buttons[4] && gp.buttons[4].pressed)
+              || (gp.buttons[6] && gp.buttons[6].value > 0.1); // LT
   input.dashPressed = isDash;
 }
