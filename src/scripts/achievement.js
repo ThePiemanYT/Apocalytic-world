@@ -1,12 +1,15 @@
-let achievements = {};
+/* src/scripts/achievement.js */
+export let achievements = {}; // EXPORTED NOW
 
 // Load from JSON + restore saved progress
-async function loadAchievements() {
+export async function loadAchievements() {
   try {
     const res = await fetch("data/achievement.json");
     if (!res.ok) throw new Error("Failed to load achievements.json");
 
-    achievements = await res.json();
+    const data = await res.json();
+    // Merge into the exported object instead of replacing it to keep references alive
+    Object.assign(achievements, data);
 
     // Restore saved progress
     const saved = JSON.parse(localStorage.getItem("achievements") || "{}");
@@ -19,8 +22,8 @@ async function loadAchievements() {
     renderAchievements();
   } catch (err) {
     console.error("Error loading achievements:", err);
-    document.querySelector(".achievementsList").innerHTML =
-      `<p style="color:red">Failed to load achievements.</p>`;
+    const list = document.querySelector(".achievementsList");
+    if(list) list.innerHTML = `<p style="color:red">Failed to load achievements.</p>`;
   }
 }
 
@@ -31,6 +34,8 @@ function saveAchievements() {
 
 function renderAchievements() {
   const container = document.querySelector(".achievementsList");
+  if (!container) return;
+  
   container.innerHTML = "";
 
   Object.keys(achievements).forEach(id => {
@@ -55,18 +60,27 @@ function renderAchievements() {
 }
 
 // Update achievement progress
-function updateAchievement(id, amount = 1) {
+export function updateAchievement(id, amount = 1) {
   if (!achievements[id]) return;
-  achievements[id].progress = Math.min(
-    achievements[id].progress + amount,
-    achievements[id].goal
-  );
-  saveAchievements();
+  
+  // If it's a "high score" type (like Wave), overwrite if higher. Else add.
+  if (id === "4") { // Wave Reached
+      if (amount > achievements[id].progress) {
+          achievements[id].progress = amount;
+          saveAchievements();
+      }
+  } else {
+      // Accumulative (Kills, Bullets)
+      if (achievements[id].progress < achievements[id].goal) {
+          achievements[id].progress = Math.min(achievements[id].progress + amount, achievements[id].goal);
+          saveAchievements();
+      }
+  }
   renderAchievements();
 }
 
 // Reset all achievements (for debugging)
-function resetAchievements() {
+export function resetAchievements() {
   Object.keys(achievements).forEach(id => {
     achievements[id].progress = 0;
   });
@@ -75,13 +89,12 @@ function resetAchievements() {
 }
 
 // Hook loader when Achievements panel opens
-const _openPanel = window.openPanel;
-window.openPanel = function (id) {
-  _openPanel(id);
-  if (id === "achievementsPanel") {
-    loadAchievements();
-  }
-};
-
-// ✅ Export functions for index.js
-export { loadAchievements, updateAchievement, resetAchievements };
+if (window.openPanel) {
+    const _openPanel = window.openPanel;
+    window.openPanel = function (id) {
+      _openPanel(id);
+      if (id === "achievementsPanel") {
+        loadAchievements();
+      }
+    };
+}

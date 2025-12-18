@@ -7,6 +7,9 @@ import {
   spawnBullet 
 } from "./state.js";
 
+// NEW: Import Cosmetic Drawers
+import { drawPlayer, drawPlayerIndicator } from "./cosmetics.js";
+
 import { 
   initUI, updateHUD, openUpgradeScreen, updateWaveUI, 
   openPanel, closePanel, toggleGameUI 
@@ -68,7 +71,7 @@ let lastTime = 0;
 
 // --- FX State (Juice) ---
 let shakeAmount = 0;
-let floatingTexts = []; // {x, y, text, color, life, size}
+let floatingTexts = []; 
 
 function spawnFloatingText(x, y, text, color = "#fff", size = 12) {
     floatingTexts.push({ x, y, text, color, size, life: 60 });
@@ -86,6 +89,9 @@ function shootBullet(targetX, targetY) {
   player.ammo--;
   updateHUD();
 
+  // Achievement 3: Fire bullets
+  updateAchievement("3", 1); 
+
   const cx = player.x + player.width / 2;
   const cy = player.y + player.height / 2;
   const speed = 7;
@@ -101,7 +107,7 @@ function shootBullet(targetX, targetY) {
       Math.cos(ang) * speed, Math.sin(ang) * speed,
       getPlayerDamage(),
       player.doubleDamage ? "orange" : "yellow",
-      false // IsCrit flag (calculated on hit usually, or here if needed)
+      false 
     );
   };
 
@@ -111,8 +117,8 @@ function shootBullet(targetX, targetY) {
     fire(angle);
   }
 
-  // Visual Feedack
-  triggerShake(2); // Small shake on shoot
+  // Visual Feedback
+  triggerShake(2); 
   playSound("shoot", 50); 
   window.onBulletFired && window.onBulletFired();
 }
@@ -159,23 +165,25 @@ function gameLoop(timestamp) {
       player.dashTime -= deltaTime;
       if (player.dashTime <= 0) {
           player.dashActive = false;
-          player.immune = false; // End invincibility
+          // FIX: Only remove immunity if the player DOES NOT have an Immunity Powerup active
+          const isImmuneByPowerup = activePowerups.some(p => p.type === "Immune");
+          if (!isImmuneByPowerup) {
+              player.immune = false;
+          }
       }
   } else if (input.dashPressed && player.dashCooldown <= 0 && (input.move.x !== 0 || input.move.y !== 0)) {
-      // Start Dash
       player.dashActive = true;
-      player.dashTime = 200; // 200ms duration
-      player.dashCooldown = 1500; // 1.5s cooldown
+      player.dashTime = 200; 
+      player.dashCooldown = 1500; 
       player.immune = true;
-      playSound("select", 0); // Placeholder dash sound
-      // Create a burst of speed
+      playSound("select", 0); 
   }
 
   // 3. Movement Physics
   let currentSpeed = player.normalSpeed;
   
   if (player.dashActive) {
-      currentSpeed = player.sprintSpeed * 3.5; // High speed dash
+      currentSpeed = player.sprintSpeed * 3.5; 
   } else if (player.sprinting && player.stamina > 0) {
       currentSpeed = player.sprintSpeed;
       player.stamina -= 0.5 * timeScale;
@@ -188,7 +196,6 @@ function gameLoop(timestamp) {
   }
   if (player.stamina === 0) player.sprinting = false;
 
-  // Apply Velocity
   if (Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05) {
       player.x += input.move.x * currentSpeed * timeScale;
       player.y += input.move.y * currentSpeed * timeScale;
@@ -200,7 +207,7 @@ function gameLoop(timestamp) {
   updateHUD();
   updateCamera(player);
   
-  // Bullets
+  // Bullets Logic
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
@@ -214,12 +221,11 @@ function gameLoop(timestamp) {
 
   // Enemies & Collisions
   import("./waves.js").then(module => {
-     updateEnemies(player, canvas, module.zombiesData || zombiesData, timeScale);
+     // Pass context for drawing Linker/Sniper lines
+     updateEnemies(player, canvas, module.zombiesData || zombiesData, projectiles, true, null, timeScale, ctx); 
      
      const sfxWrapper = { currentTime: 0, play: () => { playSound("explosion", 80); return Promise.resolve(); } };
      const hitWrapper = { currentTime: 0, play: () => { playSound("hitHurt", 50); return Promise.resolve(); } };
-     
-     // Pass effects callbacks to enemy.js
      const effects = { spawnText: spawnFloatingText, shake: triggerShake };
 
      handleBulletCollisions(bullets, true, sfxWrapper, { value: score }, document.getElementById("score"), module.zombiesData || zombiesData, canvas, hitWrapper, player, effects);
@@ -231,7 +237,6 @@ function gameLoop(timestamp) {
   updateWaveLogic();
   autoReload();
 
-  // Collisions (Player)
   if (handlePlayerCollisions(player, updateHUD, endGame)) return;
   if (handleProjectilePlayerCollision(player, updateHUD, endGame)) return;
 
@@ -258,13 +263,12 @@ function gameLoop(timestamp) {
   // 5. Drawing
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  // Screen Shake Application
   ctx.save();
   if (shakeAmount > 0) {
       const sx = (Math.random() - 0.5) * shakeAmount;
       const sy = (Math.random() - 0.5) * shakeAmount;
       ctx.translate(sx, sy);
-      shakeAmount *= 0.9; // Dampen shake
+      shakeAmount *= 0.9; 
       if (shakeAmount < 0.5) shakeAmount = 0;
   }
 
@@ -273,37 +277,52 @@ function gameLoop(timestamp) {
   ctx.save();
   ctx.scale(zoom, zoom);
   
-  // Draw Player (Ghost effect if dashing)
+  // Ghost Dash Trail
   if (player.dashActive) {
       ctx.globalAlpha = 0.4;
-      ctx.fillStyle = "white";
-      // Draw trails
+      ctx.fillStyle = player.cosmetics.bodyColor || "cyan"; 
       ctx.fillRect(Math.round(player.x - camera.x - input.move.x*15), Math.round(player.y - camera.y - input.move.y*15), player.width, player.height);
       ctx.fillRect(Math.round(player.x - camera.x - input.move.x*30), Math.round(player.y - camera.y - input.move.y*30), player.width, player.height);
       ctx.globalAlpha = 1.0;
   }
 
-  ctx.fillStyle = "cyan";
-  ctx.fillRect(Math.round(player.x - camera.x), Math.round(player.y - camera.y), player.width, player.height);
+  // --- NEW PLAYER DRAWING ---
+  drawPlayer(ctx, player, input.aim, camera);
 
-  // Draw Bullets
+  // --- OPTIMIZED BULLET DRAWING ---
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
+      const bx = b.x - camera.x;
+      const by = b.y - camera.y;
+      
+      // Halo (Glow)
       ctx.fillStyle = b.color || "yellow";
-      ctx.fillRect(Math.round(b.x - b.width / 2 - camera.x), Math.round(b.y - b.height / 2 - camera.y), b.width, b.height);
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(bx, by, b.width, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.arc(bx, by, b.width / 2.5, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
   drawEnemies(ctx, camera, 0.6);
   drawProjectiles(ctx, camera);
   drawAndHandlePowerups(ctx, player, updateHUD, true, sounds.powerUp, undefined, camera);
-  drawReticle(ctx);
   
-  // Draw Floating Texts
+  // --- NEW INDICATOR DRAWING ---
+  drawPlayerIndicator(ctx, player, input.aim, camera);
+  
+  // Floating Texts
   for (let i = floatingTexts.length - 1; i >= 0; i--) {
       const ft = floatingTexts[i];
-      ft.y -= 0.5 * timeScale; // Float up
+      ft.y -= 0.5 * timeScale; 
       ft.life -= 1 * timeScale;
       
       ctx.globalAlpha = Math.max(0, ft.life / 40);
@@ -322,10 +341,9 @@ function gameLoop(timestamp) {
   }
   ctx.globalAlpha = 1.0;
 
-  ctx.restore(); // Undo scale
-  ctx.restore(); // Undo shake
+  ctx.restore(); 
+  ctx.restore(); 
   
-  // Update Powerup Timer UI
   try { updatePowerupHUD(); } catch (e) {}
   
   requestAnimationFrame(gameLoop);
@@ -333,32 +351,11 @@ function gameLoop(timestamp) {
 
 function checkNextWave() {
   upgradeScreenShown = false;
+  // Achievement 4: Wave Reached
+  updateAchievement("4", currentWave + 1);
+  
   const success = startWave(currentWave + 1);
   if (!success) endGame(true); 
-}
-
-function drawReticle(ctx) {
-  const cx = player.x + player.width / 2;
-  const cy = player.y + player.height / 2;
-  let rx, ry;
-
-  if (input.aim.isVector) {
-    if (!input.aim.active) return;
-    rx = cx + (input.aim.x * 150);
-    ry = cy + (input.aim.y * 150);
-  } else {
-    rx = input.aim.x / zoom + camera.x;
-    ry = input.aim.y / zoom + camera.y;
-  }
-  
-  const dx = Math.round(rx - camera.x);
-  const dy = Math.round(ry - camera.y);
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(dx, dy, 10, 0, Math.PI*2); ctx.stroke();
-  ctx.fillStyle = "red";
-  ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI*2); ctx.fill();
 }
 
 // --- Game Control ---
@@ -488,7 +485,6 @@ function resumeGame() {
 }
 
 // --- Settings & UI Global Hooks ---
-// (Required for HTML buttons to access module functions)
 const musicSlider = document.getElementById("musicSlider");
 if(musicSlider) {
     musicSlider.addEventListener("input", () => {

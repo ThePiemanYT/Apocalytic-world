@@ -59,34 +59,34 @@ export const INITIAL_PLAYER_BASES = {
   baseCritMult: 1.5     // 150% damage on crit
 };
 
+// --- Load Cosmetics from LocalStorage ---
+const savedCosmetics = JSON.parse(localStorage.getItem("playerCosmetics")) || {
+  bodyColor: "cyan",
+  eyeStyle: "normal",
+  hatStyle: "none",
+  indicatorStyle: "dot"
+};
+
 export let player = {
-  x: 0, y: 0, width: 24, height: 24,
+  x: 0, y: 0, width: 32, height: 32, // Adjusted size slightly for square look
   normalSpeed: 4, sprintSpeed: 6, speed: 4,
   maxHealth: 10, health: 10,
-  magazineSize: 16, ammo: 16, reserveAmmo: 1024,
+  magazineSize: 16, ammo: 16, reserveAmmo: 750,
   stamina: 100, maxStamina: 100,
   sprinting: false,
-  
-  // Dash Mechanics
-  dashActive: false,
-  dashTime: 0,
-  dashCooldown: 0,
-  
-  // Upgrades (Knockback removed, Crit stats added)
+  dashActive: false, dashTime: 0, dashCooldown: 0,
   upgrades: { damage: 0, health: 0, speed: 0, magazine: 0, critChance: 0, critDamage: 0 },
+  critChance: 0.05, critMultiplier: 1.5,
+  lastHitTime: 0, immune: false,
+  doubleDamage: false, tripleShot: false, alwaysCrit: false,
   
-  // Calculated Stats
-  critChance: 0.05,
-  critMultiplier: 1.5,
-
-  lastHitTime: 0,
-  immune: false,
-  
-  // Powerup Flags
-  doubleDamage: false,
-  tripleShot: false,
-  alwaysCrit: false
+  // NEW: Cosmetic State
+  cosmetics: savedCosmetics
 };
+
+export function saveCosmetics() {
+  localStorage.setItem("playerCosmetics", JSON.stringify(player.cosmetics));
+}
 
 // Functions to manage state
 export function setGameRunning(val) { gameRunning = val; }
@@ -129,7 +129,7 @@ export function resetPlayerState() {
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
   player.ammo = player.magazineSize;
-  player.reserveAmmo = 1500;
+  player.reserveAmmo = 750; // UPDATED: 1500 -> 750
   player.stamina = player.maxStamina;
   player.sprinting = false;
   

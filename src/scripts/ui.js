@@ -1,5 +1,6 @@
 /* src/scripts/ui.js */
-import { player, score, recalcPlayerStats, gameRunning } from "./state.js";
+import { player, score, recalcPlayerStats, gameRunning, saveCosmetics } from "./state.js";
+import { cosmeticRegistry, isUnlocked } from "./cosmetics.js";
 import { playSound, setMusicVolume, setSFXVolume, toggleMusic, toggleSFX } from "./audio.js";
 
 // --- References ---
@@ -11,11 +12,10 @@ const waveDisplay = document.getElementById("waveDisplay");
 const ammoDisplay = document.getElementById("ammoDisplay") || document.createElement("div");
 const staminaBar = document.getElementById("staminaBar") || document.createElement("div");
 const staminaFill = document.createElement("div");
-const powerupHUD = document.createElement("div");
 
 // --- Initialization ---
 export function initUI() {
-  // Setup Ammo
+  // Setup Ammo Display
   if (!document.getElementById("ammoDisplay")) {
     ammoDisplay.id = "ammoDisplay";
     Object.assign(ammoDisplay.style, {
@@ -25,7 +25,7 @@ export function initUI() {
     document.body.appendChild(ammoDisplay);
   }
 
-  // Setup Stamina
+  // Setup Stamina Bar
   if (!document.getElementById("staminaBar")) {
     staminaBar.id = "staminaBar";
     Object.assign(staminaBar.style, {
@@ -34,6 +34,36 @@ export function initUI() {
     });
     document.body.appendChild(staminaBar);
   }
+
+  // --- NEW: Top Right Wardrobe Button ---
+  if (!document.getElementById("wardrobeBtn")) {
+      const btn = document.createElement("button");
+      btn.id = "wardrobeBtn";
+      // Icon: A Shirt/T-shirt SVG
+      btn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="white" stroke="black" stroke-width="1.5">
+          <path d="M20.38 3.46L16 2l-4 6-4-6-4.38 1.46a2 2 0 00-1.08 2.57l1.2 4.2A2 2 0 005.6 11.8L8 11v10a1 1 0 001 1h6a1 1 0 001-1V11l2.4.8a2 2 0 001.86-1.57l1.2-4.2a2 2 0 00-1.08-2.57z"/>
+        </svg>
+      `;
+      Object.assign(btn.style, {
+          position: "absolute", top: "20px", right: "20px",
+          background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)",
+          borderRadius: "8px", cursor: "pointer", padding: "8px",
+          zIndex: "10000", /* FORCE TOP LAYER */
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "transform 0.1s, background 0.2s"
+      });
+      
+      btn.onmouseenter = () => btn.style.background = "rgba(255,255,255,0.2)";
+      btn.onmouseleave = () => btn.style.background = "rgba(0,0,0,0.6)";
+      btn.onclick = () => { 
+          playSound("select"); 
+          openWardrobe(); 
+      };
+      
+      document.body.appendChild(btn);
+  }
+
   staminaBar.innerHTML = ''; 
   Object.assign(staminaFill.style, { height: "100%", width: "100%", background: "linear-gradient(90deg, #80dfff, #4fc3f7)" });
   staminaBar.appendChild(staminaFill);
@@ -51,6 +81,10 @@ export function toggleGameUI(visible) {
     
     if (ammoDisplay) ammoDisplay.style.display = displayVal;
     if (staminaBar) staminaBar.style.display = displayVal;
+    
+    // Hide Wardrobe button when game is running
+    const wBtn = document.getElementById("wardrobeBtn");
+    if(wBtn) wBtn.style.display = visible ? "none" : "flex";
 }
 
 // --- Updates ---
@@ -80,6 +114,9 @@ export function openPanel(id) {
   document.querySelectorAll(".menuPanel").forEach(p => { p.style.display = "none"; p.setAttribute("inert", ""); });
   const menu1 = document.getElementById("menu1");
   if (menu1) menu1.style.display = "none";
+  // Hide wardrobe button when other panels open
+  const wBtn = document.getElementById("wardrobeBtn");
+  if(wBtn) wBtn.style.display = "none";
 
   const el = document.getElementById(id);
   if (el) {
@@ -105,6 +142,9 @@ export function closePanel(id) {
     if (!gameRunning) {
         const menu1 = document.getElementById("menu1");
         if (menu1) menu1.style.display = "flex";
+        // Show wardrobe button again
+        const wBtn = document.getElementById("wardrobeBtn");
+        if(wBtn) wBtn.style.display = "flex";
     }
   }
   playSound("select");
@@ -164,14 +204,13 @@ async function loadAboutData() {
     if (Object.keys(aboutData)[0]) aboutTabs.firstChild.click();
 }
 
-// --- Upgrade Screen ---
+// --- Upgrade Screen (RESTORED) ---
 export function openUpgradeScreen(onComplete) {
   const upgradeKeys = [
     { key: "damage", label: "Damage" }, 
     { key: "health", label: "Health" },
     { key: "speed", label: "Speed" }, 
     { key: "magazine", label: "Magazine" },
-    // NEW: Replaced Knockback with Crit Stats
     { key: "critChance", label: "Crit Chance" },
     { key: "critDamage", label: "Crit Dmg" }
   ];
@@ -258,6 +297,119 @@ function applyUpgradeLogic(key) {
         player.ammo = Math.min(player.ammo + 4, player.magazineSize);
     }
     updateHUD();
+}
+
+// --- Wardrobe UI ---
+export function openWardrobe() {
+    let modal = document.getElementById("wardrobeModal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "wardrobeModal";
+        Object.assign(modal.style, {
+            position: "fixed", inset: "0", background: "rgba(0,0,0,0.85)", 
+            display: "none", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            zIndex: "10001", fontFamily: "'Press Start 2P', sans-serif", color: "white"
+        });
+        
+        modal.innerHTML = `
+            <h2 style="color: #ffe066; margin-bottom: 30px;">Wardrobe</h2>
+            <div id="wardrobeGrid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 600px; max-width:90%;">
+                </div>
+            <button id="closeWardrobeBtn" style="margin-top: 30px; padding: 10px 20px; font-size: 16px;">Save & Close</button>
+        `;
+        document.body.appendChild(modal);
+        
+        document.getElementById("closeWardrobeBtn").onclick = () => {
+            modal.style.display = "none";
+            document.getElementById("menu").style.display = "flex";
+            const wBtn = document.getElementById("wardrobeBtn");
+            if(wBtn) wBtn.style.display = "flex";
+            saveCosmetics(); 
+        };
+    }
+    
+    // Hide menu and wardrobe button
+    document.getElementById("menu").style.display = "none";
+    const wBtn = document.getElementById("wardrobeBtn");
+    if(wBtn) wBtn.style.display = "none";
+
+    const grid = document.getElementById("wardrobeGrid");
+    grid.innerHTML = ""; 
+    
+    const categories = [
+        { key: "bodies", label: "Color", stateKey: "bodyColor" },
+        { key: "hats", label: "Hat", stateKey: "hatStyle" },
+        { key: "eyes", label: "Eyes", stateKey: "eyeStyle" },
+        { key: "indicators", label: "Aim", stateKey: "indicatorStyle" }
+    ];
+    
+    categories.forEach(cat => {
+        const container = document.createElement("div");
+        container.style.background = "rgba(255,255,255,0.1)";
+        container.style.padding = "15px";
+        container.style.borderRadius = "8px";
+        
+        const title = document.createElement("div");
+        title.textContent = cat.label;
+        title.style.marginBottom = "10px";
+        title.style.color = "cyan";
+        container.appendChild(title);
+        
+        const selectionDisplay = document.createElement("div");
+        selectionDisplay.id = `disp-${cat.key}`;
+        selectionDisplay.style.height = "30px";
+        selectionDisplay.style.lineHeight = "30px";
+        selectionDisplay.textContent = "Loading...";
+        
+        const controls = document.createElement("div");
+        controls.style.display = "flex";
+        controls.style.gap = "10px";
+        controls.style.alignItems = "center";
+        
+        const prevBtn = document.createElement("button");
+        prevBtn.textContent = "<";
+        const nextBtn = document.createElement("button");
+        nextBtn.textContent = ">";
+        
+        let items = cosmeticRegistry[cat.key] || [];
+        let currentId = player.cosmetics[cat.stateKey];
+        let idx = items.findIndex(i => i.id === currentId);
+        if(idx === -1) idx = 0;
+        
+        const updateDisp = () => {
+            if(items.length === 0) return;
+            const item = items[idx];
+            const unlocked = isUnlocked(item);
+            
+            if (unlocked) {
+                selectionDisplay.textContent = item.name;
+                selectionDisplay.style.color = "white";
+                player.cosmetics[cat.stateKey] = item.id; 
+            } else {
+                selectionDisplay.textContent = `LOCKED`;
+                selectionDisplay.style.color = "gray";
+            }
+            
+            let hint = container.querySelector(".hint");
+            if(!hint) { hint = document.createElement("div"); hint.className="hint"; hint.style.fontSize="10px"; hint.style.marginTop="5px"; container.appendChild(hint); }
+            
+            hint.textContent = unlocked ? "" : `Req: ${item.hint || "Locked"}`;
+            hint.style.color = unlocked ? "transparent" : "#ff5252";
+        };
+        
+        prevBtn.onclick = () => { idx = (idx - 1 + items.length) % items.length; updateDisp(); };
+        nextBtn.onclick = () => { idx = (idx + 1) % items.length; updateDisp(); };
+        
+        updateDisp(); 
+        
+        controls.appendChild(prevBtn);
+        controls.appendChild(selectionDisplay);
+        controls.appendChild(nextBtn);
+        container.appendChild(controls);
+        grid.appendChild(container);
+    });
+
+    modal.style.display = "flex";
 }
 
 // --- Setup Listeners ---

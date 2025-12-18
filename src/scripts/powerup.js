@@ -45,6 +45,7 @@ function getColorForType(type) {
   if (type === "Immune") return "aqua";
   if (type === "Triple") return "violet";
   if (type === "Critical") return "#ff3333";
+  if (type === "MaxAmmo") return "#b0bec5"; // Silver color for Max Ammo
   return "#fff";
 }
 
@@ -89,10 +90,19 @@ export const powerupTypes = [
     }
   },
   {
-    // NEW: Critical Hit Powerup
     type: "critical", color: "#ff3333",
     effect: (player, _, showMsg) => {
       applyTimedPowerup(player, "Critical", "alwaysCrit", showMsg, "Max Crit!");
+    }
+  },
+  {
+    // NEW: Max Ammo Powerup
+    type: "max_ammo", color: "#b0bec5", // Silver
+    effect: (player, updateAmmo, showMsg) => {
+      // Fills current clip to full instantly
+      player.ammo = player.magazineSize;
+      if (updateAmmo) updateAmmo();
+      if (showMsg) showMsg("Max Ammo");
     }
   }
 ];

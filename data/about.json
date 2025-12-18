@@ -5,7 +5,7 @@
   },
   "2": {
     "title": "Changelog",
-    "content": "Alpha v1.3.0 — Mobile & Input Update\n• Added Dual Virtual Joysticks (Move & Aim)\n• Added dedicated Mobile Shoot Button\n• Implemented Auto-Device Detection (Keyboard/Gamepad/Touch)\n• Fixed Powerup UI Duration Timer\n• Improved Controller Support (R2/A to shoot)\n\nAlpha v1.2.1 — The Menu Update 2\n• Expanded About panel with tabs\n• Integrated Credits into About\n\nAlpha v1.2.0 — Menu Update\n• Introduced modernized main menu\n• Added Settings with audio & graphics placeholders\n\nAlpha v1.1.0 — Powerup Revamp\n• Added new powerups: Triple Shot, Damage Boost\n• Fixed powerup duration bug"
+    "content": "Alpha v1.4.0 — The Customization Update\n• NEW: Wardrobe System! Customize your Body, Eyes, Hat, and Aim Indicator.\n• NEW: Unlockable Cosmetics via Achievements (Reach waves, kill enemies, etc.)\n• NEW Enemies: 'Linker' (Heals allies) & 'Sniper' (Long-range laser threat).\n• Visuals: Player eyes now track the cursor, and bullets have a glow effect.\n• Added 'Max Ammo' Powerup and fixed Dash Immunity bug.\n\nAlpha v1.3.0 — Mobile & Input Update\n• Added Dual Virtual Joysticks (Move & Aim)\n• Added dedicated Mobile Shoot Button\n• Implemented Auto-Device Detection (Keyboard/Gamepad/Touch)\n• Fixed Powerup UI Duration Timer\n• Improved Controller Support (R2/A to shoot)\n\nAlpha v1.2.1 — The Menu Update 2\n• Expanded About panel with tabs\n• Integrated Credits into About\n\nAlpha v1.2.0 — Menu Update\n• Introduced modernized main menu\n• Added Settings with audio & graphics placeholders"
   },
   "3": {
     "title": "Special Thanks",
@@ -13,6 +13,6 @@
   },
   "4": {
     "title": "Credits",
-    "content": "Game & Assets: Pieman\nMusic: Apocalypse - SYBS\nAdditional Feedback: Community Testers\nSpecial Thanks: Everyone who helped along the way!"
+    "content": "Game & Assets: Pieman\nMusic: SYBS - Apocalypse\nSound Effects: Retro Gaming Pack"
   }
 }
