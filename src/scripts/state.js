@@ -71,7 +71,7 @@ export let player = {
   x: 0, y: 0, width: 32, height: 32,
   normalSpeed: 4, sprintSpeed: 6, speed: 4,
   maxHealth: 10, health: 10,
-  magazineSize: 40, ammo: 40, reserveAmmo: 750,
+  magazineSize: 40, ammo: 40, reserveAmmo: 1000,
   stamina: 100, maxStamina: 100,
   sprinting: false,
   dashActive: false, dashTime: 0, dashCooldown: 0,
@@ -127,7 +127,7 @@ export function resetPlayerState() {
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
   player.ammo = player.magazineSize;
-  player.reserveAmmo = 750;
+  player.reserveAmmo = 1000;
   player.stamina = player.maxStamina;
   player.sprinting = false;
   

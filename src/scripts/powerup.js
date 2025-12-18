@@ -94,9 +94,9 @@ export const powerupTypes = [
   {
     type: "ammo", color: "blue",
     effect: (player, updateAmmo, showMsg) => {
-      player.reserveAmmo += 42;
+      player.reserveAmmo += 60;
       if (updateAmmo) updateAmmo();
-      if (showMsg) showMsg("+42 Ammo");
+      if (showMsg) showMsg("+60 Ammo");
     }
   },
   {

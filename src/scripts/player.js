@@ -3,7 +3,7 @@ export let player = {
   x: 0, y: 0, width: 40, height: 40,
   baseSpeed: 4,
   maxHealth: 5, health: 5,
-  magazineSize: 40, ammo: 40, reserveAmmo: 256,
+  magazineSize: 40, ammo: 40, reserveAmmo: 1000,
   stamina: 100, maxStamina: 100,
   sprinting: false,
 
@@ -105,7 +105,7 @@ export function resetPlayer(canvas) {
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
   player.ammo = player.magazineSize;
-  player.reserveAmmo = 256;
+  player.reserveAmmo = 1000;
   player.stamina = player.maxStamina;
   player.sprinting = false;
   updateStaminaBar();

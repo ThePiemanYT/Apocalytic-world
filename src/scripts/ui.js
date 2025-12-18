@@ -47,7 +47,7 @@ export function initUI() {
           position: "absolute", top: "20px", right: "20px",
           background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)",
           borderRadius: "8px", cursor: "pointer", padding: "8px",
-          zIndex: "10000", /* Always on top */
+          zIndex: "10000",
           display: "flex", alignItems: "center", justifyContent: "center",
           transition: "transform 0.1s, background 0.2s"
       });
@@ -148,14 +148,21 @@ async function loadHelpData() {
   const helpTabs = document.getElementById("helpTabs");
   const helpContent = document.getElementById("helpContent");
   if (!helpTabs) return;
+  
   if (!helpData) {
     try { const res = await fetch("data/help.json"); helpData = await res.json(); } catch (e) {}
   }
+  
   helpTabs.innerHTML = "";
   if(helpData) Object.keys(helpData).forEach(key => {
       const btn = document.createElement("button");
-      btn.textContent = key;
-      btn.onclick = () => { helpContent.innerHTML = `<h4 style="color:#ffd166">${helpData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${helpData[key].content}</p>`; };
+      // FIX: Use Number/Key instead of Title for Tab Button
+      btn.textContent = key; 
+      btn.onclick = () => { 
+          const txt = helpData[key].content.replace(/\n/g, "<br>");
+          // Title still shown inside content
+          helpContent.innerHTML = `<h4 style="color:#ffd166">${helpData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; 
+      };
       helpTabs.appendChild(btn);
   });
   if (helpData && Object.keys(helpData)[0]) helpTabs.firstChild.click();
@@ -165,21 +172,27 @@ async function loadAboutData() {
     const aboutTabs = document.getElementById("aboutTabs");
     const aboutContent = document.getElementById("aboutContent");
     if (!aboutTabs) return;
+    
     if (!aboutData) {
         try { const res = await fetch("data/about.json"); aboutData = await res.json(); } catch (e) {}
     }
+    
     aboutTabs.innerHTML = "";
     if(aboutData) Object.keys(aboutData).forEach(key => {
         const btn = document.createElement("button");
-        btn.textContent = key === "1" ? "Overview" : (aboutData[key].title || key);
-        if(aboutData[key].title === "Overview") btn.textContent = "Game";
-        btn.onclick = () => { const txt = aboutData[key].content ? aboutData[key].content.replace(/\n/g, "<br>") : ""; aboutContent.innerHTML = `<h4 style="color:#ffd166">${aboutData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; };
+        // FIX: Use Number/Key instead of Title for Tab Button
+        btn.textContent = key;
+        btn.onclick = () => { 
+            const txt = aboutData[key].content ? aboutData[key].content.replace(/\n/g, "<br>") : ""; 
+            aboutContent.innerHTML = `<h4 style="color:#ffd166">${aboutData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; 
+        };
         aboutTabs.appendChild(btn);
     });
+    
     if (aboutData && Object.keys(aboutData)[0]) aboutTabs.firstChild.click();
 }
 
-// --- UPGRADE SCREEN (Restored & Fixed) ---
+// --- UPGRADE SCREEN ---
 export function openUpgradeScreen(onComplete) {
   const upgradeKeys = [
     { key: "damage", label: "Damage" }, 
@@ -231,7 +244,7 @@ export function openUpgradeScreen(onComplete) {
           
           const lvl = player.upgrades[u.key] || 0;
           
-          // Draw Level Pips
+          // Reverted to Visual Blocks (Pips) based on context
           let blocksHTML = "<div style='display:flex;gap:4px;'>";
           for(let i=0; i<maxPerUpgrade; i++) {
               const color = i < lvl ? "#ffd166" : "rgba(255,255,255,0.1)";
@@ -258,9 +271,8 @@ export function openUpgradeScreen(onComplete) {
               
               player.upgrades[u.key] = lvl + 1;
               picks++;
-              playSound("select"); // Audio feedback
+              playSound("select"); 
               
-              // Apply Immediate Effects
               recalcPlayerStats();
               if (u.key === 'health') player.health = Math.min(player.health + 2, player.maxHealth);
               if (u.key === 'magazine') player.ammo = Math.min(player.ammo + 4, player.magazineSize);
@@ -272,7 +284,7 @@ export function openUpgradeScreen(onComplete) {
                   setTimeout(() => {
                       modal.remove(); 
                       if(onComplete) onComplete(); 
-                  }, 300); // Small delay to see the last pip fill
+                  }, 300); 
               }
           };
           row.appendChild(btn);
@@ -327,7 +339,7 @@ export function openWardrobe() {
         { key: "hats", label: "Hat Style", stateKey: "hatStyle" },
         { key: "eyes", label: "Eye Style", stateKey: "eyeStyle" },
         { key: "indicators", label: "Aim Style", stateKey: "indicatorStyle" },
-        { key: "bullets", label: "Bullet Style", stateKey: "bulletStyle" } // NEW
+        { key: "bullets", label: "Bullet Style", stateKey: "bulletStyle" }
     ];
     
     categories.forEach(cat => {
@@ -378,7 +390,6 @@ function startPreview() {
         pCtx.save();
         pCtx.translate(w/2, h/2); pCtx.scale(ZOOM, ZOOM);
         
-        // Use player current style
         const mockPlayer = { ...player, x: -16, y: -16, width: 32, height: 32 };
         const mockCam = { x: 0, y: 0 };
         const aim = { x: Math.cos(t) * 60, y: Math.sin(t) * 60, isVector: true };
@@ -388,7 +399,6 @@ function startPreview() {
         drawPlayer(pCtx, mockPlayer, aim, move, mockCam);
         drawPlayerIndicator(pCtx, mockPlayer, aim, mockCam);
         
-        // Draw Bullet Preview
         const bStyle = getBulletStyleDef(player.cosmetics.bulletStyle);
         const bx = 30, by = 0;
         if(bStyle.type === "gradient") {
@@ -416,6 +426,5 @@ function setupSettingsListeners() {
     if (sToggle) sToggle.addEventListener("change", (e) => toggleSFX(e.target.checked));
 }
 
-// Global Exports
 window.openPanel = openPanel;
 window.closePanel = closePanel;
