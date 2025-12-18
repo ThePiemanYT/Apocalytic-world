@@ -3,7 +3,7 @@ export let player = {
   x: 0, y: 0, width: 40, height: 40,
   baseSpeed: 4,
   maxHealth: 5, health: 5,
-  magazineSize: 16, ammo: 16, reserveAmmo: 256,
+  magazineSize: 40, ammo: 40, reserveAmmo: 256,
   stamina: 100, maxStamina: 100,
   sprinting: false,
 

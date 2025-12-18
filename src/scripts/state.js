@@ -13,7 +13,6 @@ export let score = 0;
 export let isReloading = false;
 
 // --- Bullet Pooling System ---
-// We reuse these objects to prevent memory spikes (garbage collection lag).
 export const MAX_BULLETS = 300;
 export const bullets = new Array(MAX_BULLETS).fill(null).map(() => ({
   active: false,
@@ -21,11 +20,11 @@ export const bullets = new Array(MAX_BULLETS).fill(null).map(() => ({
   dx: 0, dy: 0,
   width: 8, height: 8,
   damage: 1,
-  color: "yellow",
-  isCrit: false // New flag for visual effect
+  color: "default", // Stores the Cosmetic ID now
+  isCrit: false
 }));
 
-export function spawnBullet(x, y, dx, dy, damage, color, isCrit) {
+export function spawnBullet(x, y, dx, dy, damage, styleId, isCrit) {
   for (let i = 0; i < MAX_BULLETS; i++) {
     if (!bullets[i].active) {
       const b = bullets[i];
@@ -35,7 +34,7 @@ export function spawnBullet(x, y, dx, dy, damage, color, isCrit) {
       b.dx = dx;
       b.dy = dy;
       b.damage = damage;
-      b.color = color;
+      b.color = styleId; // Pass the cosmetic ID (e.g., "fire", "rainbow")
       b.isCrit = isCrit;
       return;
     }
@@ -53,25 +52,26 @@ export const INITIAL_PLAYER_BASES = {
   maxHealth: 10,
   normalSpeed: 4,
   sprintSpeed: 6,
-  magazine: 16,
+  magazine: 40,
   baseDamage: 1,
-  baseCritChance: 0.05, // 5% base chance
-  baseCritMult: 1.5     // 150% damage on crit
+  baseCritChance: 0.05,
+  baseCritMult: 1.5
 };
 
-// --- Load Cosmetics from LocalStorage ---
+// --- Load Cosmetics ---
 const savedCosmetics = JSON.parse(localStorage.getItem("playerCosmetics")) || {
   bodyColor: "cyan",
   eyeStyle: "normal",
   hatStyle: "none",
-  indicatorStyle: "dot"
+  indicatorStyle: "dot",
+  bulletStyle: "default" // NEW: Bullet Style
 };
 
 export let player = {
-  x: 0, y: 0, width: 32, height: 32, // Adjusted size slightly for square look
+  x: 0, y: 0, width: 32, height: 32,
   normalSpeed: 4, sprintSpeed: 6, speed: 4,
   maxHealth: 10, health: 10,
-  magazineSize: 16, ammo: 16, reserveAmmo: 750,
+  magazineSize: 40, ammo: 40, reserveAmmo: 750,
   stamina: 100, maxStamina: 100,
   sprinting: false,
   dashActive: false, dashTime: 0, dashCooldown: 0,
@@ -80,7 +80,6 @@ export let player = {
   lastHitTime: 0, immune: false,
   doubleDamage: false, tripleShot: false, alwaysCrit: false,
   
-  // NEW: Cosmetic State
   cosmetics: savedCosmetics
 };
 
@@ -98,8 +97,8 @@ export function recalcPlayerStats() {
   const hpPerLevel = 2;
   const speedPerLevel = 0.25;
   const magazinePerLevel = 4;
-  const critChancePerLevel = 0.05; // +5% per level
-  const critMultPerLevel = 0.25;   // +25% per level
+  const critChancePerLevel = 0.05;
+  const critMultPerLevel = 0.25;
 
   player.maxHealth = INITIAL_PLAYER_BASES.maxHealth + (player.upgrades.health || 0) * hpPerLevel;
   if (typeof player.health !== 'number' || Number.isNaN(player.health)) player.health = player.maxHealth;
@@ -121,7 +120,6 @@ export function getPlayerDamage() {
 }
 
 export function resetPlayerState() {
-  // Reset upgrades to default structure
   player.upgrades = { damage: 0, health: 0, speed: 0, magazine: 0, critChance: 0, critDamage: 0 };
   recalcPlayerStats();
   
@@ -129,17 +127,15 @@ export function resetPlayerState() {
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
   player.ammo = player.magazineSize;
-  player.reserveAmmo = 750; // UPDATED: 1500 -> 750
+  player.reserveAmmo = 750;
   player.stamina = player.maxStamina;
   player.sprinting = false;
   
-  // Reset Powerup Flags
   player.immune = false;
   player.doubleDamage = false;
   player.tripleShot = false;
   player.alwaysCrit = false;
   
-  // Reset Dash State
   player.dashActive = false;
   player.dashCooldown = 0;
   
@@ -148,7 +144,6 @@ export function resetPlayerState() {
   isReloading = false;
 }
 
-// Global Access for Console/Debugging
 window.player = player;
 window.gameCanvas = canvas;
 window.gameState = { gameRunning, paused, score, bullets };

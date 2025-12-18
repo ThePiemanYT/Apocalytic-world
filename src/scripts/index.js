@@ -7,8 +7,7 @@ import {
   spawnBullet 
 } from "./state.js";
 
-// NEW: Import Cosmetic Drawers
-import { drawPlayer, drawPlayerIndicator } from "./cosmetics.js";
+import { drawPlayer, drawPlayerIndicator, getBulletStyleDef } from "./cosmetics.js";
 
 import { 
   initUI, updateHUD, openUpgradeScreen, updateWaveUI, 
@@ -34,15 +33,16 @@ import {
 } from "./enemy.js";
 
 import { reload } from "./reload.js";
+
+// FIX: Added pausePowerups and resumePowerups to imports
 import { 
     drawAndHandlePowerups, initPowerupHUD, updatePowerupHUD, 
-    activePowerups, resetPowerups 
+    activePowerups, resetPowerups, pausePowerups, resumePowerups 
 } from "./powerup.js";
 
 import { updateAchievement, loadAchievements } from "./achievement.js";
 import { initInput, updateInput, input } from "./input.js";
 
-// --- Global Setup for Menu Background ---
 const menuBackground = document.createElement("img");
 menuBackground.src = "src/assets/image/menuScreen1.png";
 menuBackground.id = "menuBackground";
@@ -63,13 +63,11 @@ function toggleAnimation(show) {
 const gameBG = new Image();
 gameBG.src = "src/assets/image/gameBG.png";
 
-// --- Logic Variables ---
 let waveClearTimeout = null;
 let upgradeScreenShown = false;
-let usedPowerup = false;
 let lastTime = 0; 
-
-// --- FX State (Juice) ---
+let usedPowerup = false;
+let powerupsCollected = 0;
 let shakeAmount = 0;
 let floatingTexts = []; 
 
@@ -81,32 +79,29 @@ function triggerShake(amount) {
     shakeAmount = amount;
 }
 
-// --- Core Gameplay Functions ---
-
 function shootBullet(targetX, targetY) {
   if (!gameRunning || player.ammo <= 0 || isReloading) return;
 
   player.ammo--;
   updateHUD();
-
-  // Achievement 3: Fire bullets
   updateAchievement("3", 1); 
 
   const cx = player.x + player.width / 2;
   const cy = player.y + player.height / 2;
   const speed = 7;
 
-  // Calculate World Coordinates from Screen Input
   const worldX = targetX / zoom + camera.x;
   const worldY = targetY / zoom + camera.y;
   const angle = Math.atan2(worldY - cy, worldX - cx);
+
+  const styleId = player.cosmetics.bulletStyle || "default";
 
   const fire = (ang) => {
     spawnBullet(
       cx, cy, 
       Math.cos(ang) * speed, Math.sin(ang) * speed,
       getPlayerDamage(),
-      player.doubleDamage ? "orange" : "yellow",
+      styleId, 
       false 
     );
   };
@@ -117,7 +112,6 @@ function shootBullet(targetX, targetY) {
     fire(angle);
   }
 
-  // Visual Feedback
   triggerShake(2); 
   playSound("shoot", 50); 
   window.onBulletFired && window.onBulletFired();
@@ -138,7 +132,6 @@ function autoReload() {
   if (!isReloading && player.ammo === 0 && player.reserveAmmo > 0) tryReload();
 }
 
-// --- Main Game Loop ---
 function gameLoop(timestamp) {
   if (!gameRunning) return;
   
@@ -154,18 +147,17 @@ function gameLoop(timestamp) {
     return;
   }
 
-  // 1. Input
+  // Input
   updateInput(player.x, player.y, camera.x, camera.y, zoom);
   player.sprinting = input.isSprinting;
 
-  // 2. Dash Logic
   if (player.dashCooldown > 0) player.dashCooldown -= deltaTime;
   
   if (player.dashActive) {
       player.dashTime -= deltaTime;
       if (player.dashTime <= 0) {
           player.dashActive = false;
-          // FIX: Only remove immunity if the player DOES NOT have an Immunity Powerup active
+          // Only remove immunity if NOT granted by a Powerup
           const isImmuneByPowerup = activePowerups.some(p => p.type === "Immune");
           if (!isImmuneByPowerup) {
               player.immune = false;
@@ -179,9 +171,8 @@ function gameLoop(timestamp) {
       playSound("select", 0); 
   }
 
-  // 3. Movement Physics
+  // Movement
   let currentSpeed = player.normalSpeed;
-  
   if (player.dashActive) {
       currentSpeed = player.sprintSpeed * 3.5; 
   } else if (player.sprinting && player.stamina > 0) {
@@ -203,11 +194,10 @@ function gameLoop(timestamp) {
       player.y = Math.max(0, Math.min(worldHeight - player.height, player.y));
   }
 
-  // 4. Updates
   updateHUD();
   updateCamera(player);
   
-  // Bullets Logic
+  // Bullets
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
@@ -219,9 +209,7 @@ function gameLoop(timestamp) {
     }
   }
 
-  // Enemies & Collisions
   import("./waves.js").then(module => {
-     // Pass context for drawing Linker/Sniper lines
      updateEnemies(player, canvas, module.zombiesData || zombiesData, projectiles, true, null, timeScale, ctx); 
      
      const sfxWrapper = { currentTime: 0, play: () => { playSound("explosion", 80); return Promise.resolve(); } };
@@ -240,15 +228,17 @@ function gameLoop(timestamp) {
   if (handlePlayerCollisions(player, updateHUD, endGame)) return;
   if (handleProjectilePlayerCollision(player, updateHUD, endGame)) return;
 
-  // Wave Clear Check
+  // Wave Clear & Upgrades
   if (!waveSpawning && enemies.length === 0) {
     if (!waveClearTimeout) {
       waveClearTimeout = setTimeout(() => {
         waveClearTimeout = null;
         if ((currentWave + 1) % 3 === 0 && !upgradeScreenShown) {
           setPaused(true);
+          pausePowerups(); // FIX: Pause powerups
           openUpgradeScreen(() => {
             setPaused(false);
+            resumePowerups(); // FIX: Resume powerups
             upgradeScreenShown = true; 
             lastTime = 0; 
             checkNextWave();
@@ -260,7 +250,7 @@ function gameLoop(timestamp) {
     }
   }
 
-  // 5. Drawing
+  // Drawing
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
   ctx.save();
@@ -277,7 +267,6 @@ function gameLoop(timestamp) {
   ctx.save();
   ctx.scale(zoom, zoom);
   
-  // Ghost Dash Trail
   if (player.dashActive) {
       ctx.globalAlpha = 0.4;
       ctx.fillStyle = player.cosmetics.bodyColor || "cyan"; 
@@ -286,24 +275,30 @@ function gameLoop(timestamp) {
       ctx.globalAlpha = 1.0;
   }
 
-  // --- NEW PLAYER DRAWING ---
-  drawPlayer(ctx, player, input.aim, camera);
+  drawPlayer(ctx, player, input.aim, input.move, camera);
 
-  // --- OPTIMIZED BULLET DRAWING ---
+  // Bullets w/ Cosmetics
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
       const bx = b.x - camera.x;
       const by = b.y - camera.y;
       
-      // Halo (Glow)
-      ctx.fillStyle = b.color || "yellow";
-      ctx.globalAlpha = 0.3;
+      const styleDef = getBulletStyleDef(b.color); 
+      
+      if (styleDef.type === "gradient") {
+          const grad = ctx.createLinearGradient(bx - b.width, by - b.width, bx + b.width, by + b.width);
+          styleDef.colors.forEach((c, idx) => grad.addColorStop(idx / (styleDef.colors.length - 1), c));
+          ctx.fillStyle = grad;
+      } else {
+          ctx.fillStyle = styleDef.color;
+      }
+
+      ctx.globalAlpha = 0.4; 
       ctx.beginPath();
       ctx.arc(bx, by, b.width, 0, Math.PI * 2);
       ctx.fill();
 
-      // Core
       ctx.globalAlpha = 1.0;
       ctx.fillStyle = "white";
       ctx.beginPath();
@@ -314,12 +309,18 @@ function gameLoop(timestamp) {
 
   drawEnemies(ctx, camera, 0.6);
   drawProjectiles(ctx, camera);
-  drawAndHandlePowerups(ctx, player, updateHUD, true, sounds.powerUp, undefined, camera);
   
-  // --- NEW INDICATOR DRAWING ---
+  drawAndHandlePowerups(ctx, player, updateHUD, true, sounds.powerUp, undefined, camera, (type) => {
+      usedPowerup = true;
+      powerupsCollected++;
+      updateAchievement("5", 1); 
+      if (powerupsCollected >= 20) {
+          updateAchievement("6", 1); 
+      }
+  });
+  
   drawPlayerIndicator(ctx, player, input.aim, camera);
   
-  // Floating Texts
   for (let i = floatingTexts.length - 1; i >= 0; i--) {
       const ft = floatingTexts[i];
       ft.y -= 0.5 * timeScale; 
@@ -344,16 +345,15 @@ function gameLoop(timestamp) {
   ctx.restore(); 
   ctx.restore(); 
   
-  try { updatePowerupHUD(); } catch (e) {}
+  // FIX: Pass player to updatePowerupHUD to sync flags!
+  try { updatePowerupHUD(player); } catch (e) {}
   
   requestAnimationFrame(gameLoop);
 }
 
 function checkNextWave() {
   upgradeScreenShown = false;
-  // Achievement 4: Wave Reached
   updateAchievement("4", currentWave + 1);
-  
   const success = startWave(currentWave + 1);
   if (!success) endGame(true); 
 }
@@ -364,7 +364,6 @@ async function startGame() {
   toggleAnimation(false);
   document.getElementById("menu").style.display = "none";
   document.getElementById("gameOver").style.display = "none";
-  
   const vLabel = document.getElementById("versionLabel");
   if (vLabel) vLabel.style.display = "none";
   
@@ -395,6 +394,8 @@ function resetGame() {
   resetWaveState();
   resetPowerups();
   updateHUD();
+  usedPowerup = false;
+  powerupsCollected = 0;
   shakeAmount = 0;
   floatingTexts = [];
 }
@@ -406,11 +407,17 @@ function endGame(victory = false) {
   document.getElementById("gameOver").style.display = "flex";
   backgroundMusic.pause();
   
-  if (victory && !usedPowerup) updateAchievement("1", 1);
+  if (victory && !usedPowerup) {
+      updateAchievement("1", 1);
+  }
+  
   playSound(victory ? "victory" : "gameOver");
   
   toggleGameUI(false);
   resetPowerups();
+  
+  const wBtn = document.getElementById("wardrobeBtn");
+  if(wBtn) wBtn.style.display = "none";
 }
 
 function quitGame() { playSound("select"); window.close(); }
@@ -420,22 +427,19 @@ function backToMenu() {
   setPaused(false); 
   hidePauseOverlay();
   setGameRunning(false);
-  
   document.getElementById("gameOver").style.display = "none";
   document.getElementById("menu").style.display = "flex";
-  
   const menu1 = document.getElementById("menu1");
   if(menu1) menu1.style.display = "flex";
-
   const vLabel = document.getElementById("versionLabel");
   if (vLabel) vLabel.style.display = "block";
-
   showMenuBackground();
   toggleAnimation(true);
   playSound("select");
-  
   toggleGameUI(false);
   resetPowerups();
+  const wBtn = document.getElementById("wardrobeBtn");
+  if(wBtn) wBtn.style.display = "flex";
 }
 
 // --- Pause System ---
@@ -471,6 +475,7 @@ function hidePauseOverlay() {
 function pauseGame() {
   if (!gameRunning || paused) return;
   setPaused(true);
+  pausePowerups(); // FIX: Pause powerups
   showPauseOverlay();
   backgroundMusic.pause();
 }
@@ -478,13 +483,13 @@ function pauseGame() {
 function resumeGame() {
   if (!paused) return;
   setPaused(false);
+  resumePowerups(); // FIX: Resume powerups
   hidePauseOverlay();
   if(musicEnabled) backgroundMusic.play().catch(()=>{});
   lastTime = 0; 
   requestAnimationFrame(gameLoop);
 }
 
-// --- Settings & UI Global Hooks ---
 const musicSlider = document.getElementById("musicSlider");
 if(musicSlider) {
     musicSlider.addEventListener("input", () => {

@@ -7,7 +7,6 @@ export function handleSummonerAbility(enemies, zombiesData, canvas) {
   }
   const timers = handleSummonerAbility.summonerTimers;
 
-  // Summoner ability: every 5s, summon 2 minions
   for (let i = 0; i < enemies.length; ++i) {
     const e = enemies[i];
     if (e.type === "summoner") {
@@ -38,7 +37,6 @@ export function handleSummonerAbility(enemies, zombiesData, canvas) {
       }
     }
   }
-  // Clean up timers
   for (const e of Array.from(timers.keys())) { if (!enemies.includes(e)) timers.delete(e); }
 }
 
@@ -102,7 +100,7 @@ export function handleThrowerAbility(enemies, player, projectiles, zombiesData) 
 }
 
 export function handleLinkerAbility(enemies, ctx, camera) {
-  const range = 250; // Increased range slightly
+  const range = 250; 
   for (let e of enemies) {
     if (e.type === "linker") {
        const ex = e.x + e.width/2;
@@ -134,59 +132,35 @@ export function handleLinkerAbility(enemies, ctx, camera) {
   }
 }
 
-export function handleSniperAbility(enemies, player, projectiles, ctx, camera) {
-  if (!handleSniperAbility.states) handleSniperAbility.states = new Map();
-  const states = handleSniperAbility.states;
-
+// UPDATED: No drawing here, just state updates
+export function handleSniperAbility(enemies, player, projectiles) {
   for (let e of enemies) {
     if (e.type === "sniper") {
-      let state = states.get(e);
-      if (!state) {
-        state = { phase: "aim", timer: Date.now(), lockedAngle: 0 };
-        states.set(e, state);
+      // Init State
+      if (!e.sniperState) {
+        e.sniperState = { phase: "aim", timer: Date.now(), angle: 0 };
       }
+      const state = e.sniperState;
       
       const ex = e.x + e.width/2;
       const ey = e.y + e.height/2;
       const px = player.x + player.width/2;
       const py = player.y + player.height/2;
-      const dx = px - ex;
-      const dy = py - ey;
       
-      // Phase 1: Aiming (2 seconds total)
+      // Phase 1: Aiming
       if (state.phase === "aim") {
-        e.speed = 0; 
+        e.speed = 0; // Stop moving to aim
         
         const timeElapsed = Date.now() - state.timer;
         const totalAimTime = 2000;
-        const lockTime = 1500; // Track for 1.5s, then lock for 0.5s
+        const lockTime = 1500; 
 
-        // TRACKING LOGIC: Update angle only if not in "locked" final moment
+        // Track player angle until locked
         if (timeElapsed < lockTime) {
-            state.lockedAngle = Math.atan2(dy, dx);
+            state.angle = Math.atan2(py - ey, px - ex);
         }
 
-        // Draw Laser
-        if (ctx) {
-            ctx.save();
-            // Solid Red Line (1-2px)
-            ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
-            ctx.lineWidth = 1.5; // Small red line as requested
-            
-            // Make it flicker slightly right before firing to warn player
-            if (timeElapsed > lockTime) {
-                ctx.lineWidth = Math.random() > 0.5 ? 2 : 1;
-                ctx.strokeStyle = "rgba(255, 50, 50, 1.0)";
-            }
-
-            ctx.beginPath();
-            ctx.moveTo(ex - camera.x, ey - camera.y);
-            const laserLen = 1200;
-            ctx.lineTo((ex + Math.cos(state.lockedAngle)*laserLen) - camera.x, (ey + Math.sin(state.lockedAngle)*laserLen) - camera.y);
-            ctx.stroke();
-            ctx.restore();
-        }
-
+        // Fire Transition
         if (timeElapsed > totalAimTime) {
           state.phase = "fire";
           state.timer = Date.now();
@@ -196,8 +170,8 @@ export function handleSniperAbility(enemies, player, projectiles, ctx, camera) {
       else if (state.phase === "fire") {
           projectiles.push({
             x: ex - 5, y: ey - 5, width: 12, height: 12,
-            dx: Math.cos(state.lockedAngle) * 22, // High speed
-            dy: Math.sin(state.lockedAngle) * 22,
+            dx: Math.cos(state.angle) * 22, 
+            dy: Math.sin(state.angle) * 22,
             color: "#ff0000",
             from: "sniper"
           });
@@ -207,7 +181,7 @@ export function handleSniperAbility(enemies, player, projectiles, ctx, camera) {
       }
       // Phase 3: Cooldown
       else if (state.phase === "cooldown") {
-          e.speed = 1.5; 
+          e.speed = 1.5; // Move slowly while cooling down
           if (Date.now() - state.timer > 2000) {
               state.phase = "aim";
               state.timer = Date.now();
@@ -215,6 +189,4 @@ export function handleSniperAbility(enemies, player, projectiles, ctx, camera) {
       }
     }
   }
-  
-  for (const e of Array.from(states.keys())) { if (!enemies.includes(e)) states.delete(e); }
 }

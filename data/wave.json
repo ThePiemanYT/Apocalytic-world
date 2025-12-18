@@ -2,47 +2,51 @@
   {
     "wave": 1,
     "zombies": [
-      { "type": "normal", "count": 3 },
-      { "type": "linker", "count": 2 },
-      { "type": "sniper", "count": 1 }
+      { "type": "normal", "count": 6 }
     ]
   },
   {
     "wave": 2,
     "zombies": [
-      { "type": "normal", "count": 8 },
-      { "type": "speed", "count": 2 }
+      { "type": "normal", "count": 6 },
+      { "type": "speed", "count": 4 }
     ]
   },
   { "wave": 3,
     "zombies": [
       { "type": "normal", "count": 6 },
       { "type": "speed", "count": 4 },
-      { "type": "tank", "count": 1 }
+      { "type": "tank", "count": 2 }
     ]
   },
   {
     "wave": 4,
     "zombies": [
       { "type": "normal", "count": 8 },
+      { "type": "speed", "count": 5 },
       { "type": "tank", "count": 3 },
-      { "type": "Spitter", "count": 5 }
+      { "type": "Spitter", "count": 4 }
     ]
   },
   {
     "wave": 5,
     "zombies": [
+      { "type": "normal", "count": 5 },
       { "type": "speed", "count": 10 },
+      { "type": "tank", "count": 5 },
+      { "type": "Spitter", "count": 3 },
       { "type": "summoner", "count": 1 }
     ]
   },
   {
     "wave": 6,
     "zombies": [
-      { "type": "normal", "count": 10 },
+      { "type": "normal", "count": 5 },
+      { "type": "speed", "count": 4 },
       { "type": "tank", "count": 2 },
+      { "type": "Spitter", "count": 4 },
       { "type": "summoner", "count": 2 },
-      { "type": "Juggernaut", "count": 1 }
+      { "type": "giant", "count": 1 }
     ]
   },
   {
@@ -50,16 +54,86 @@
     "zombies": [
       { "type": "normal", "count": 5 },
       { "type": "giant", "count": 1 },
-      { "type": "speed", "count": 5 }
+      { "type": "speed", "count": 5 },
+      { "type": "Spitter", "count": 5 },
+      { "type": "summoner", "count": 2 },
+      { "type": "Juggernaut", "count": 2 }
     ]
   },
   {
     "wave": 8,
     "zombies": [
-      { "type": "giant", "count": 2 },
-      { "type": "summoner", "count": 2 },
+      { "type": "normal", "count": 4 },
+      { "type": "speed", "count": 5 },
+      { "type": "giant", "count": 4 },
+      { "type": "summoner", "count": 4 },
       { "type": "tank", "count": 5 },
       { "type": "thrower", "count": 5 }
+    ]
+  },
+  {
+    "wave": 9,
+    "zombies": [
+      { "type": "normal", "count": 4 },
+      { "type": "speed", "count": 5 },
+      { "type": "giant", "count": 4 },
+      { "type": "summoner", "count": 4 },
+      { "type": "tank", "count": 5 },
+      { "type": "thrower", "count": 5 },
+      { "type": "linker", "count": 1 }
+    ]
+  },
+  {
+    "wave": 10,
+    "zombies": [
+      { "type": "normal", "count": 4 },
+      { "type": "speed", "count": 5 },
+      { "type": "giant", "count": 4 },
+      { "type": "summoner", "count": 4 },
+      { "type": "tank", "count": 5 },
+      { "type": "thrower", "count": 5 },
+      { "type": "sniper", "count": 4 },
+      { "type": "Juggernaut", "count": 1 }
+    ]
+  },
+  {
+    "wave": 11,
+    "zombies": [
+      { "type": "normal", "count": 4 },
+      { "type": "speed", "count": 5 },
+      { "type": "giant", "count": 4 },
+      { "type": "summoner", "count": 4 },
+      { "type": "tank", "count": 5 },
+      { "type": "thrower", "count": 5 },
+      { "type": "sniper", "count": 4 },
+      { "type": "linker", "count": 2 },
+      { "type": "Juggernaut", "count": 1 }
+    ]
+  },
+  {
+    "wave": 12,
+    "zombies": [
+      { "type": "normal", "count": 4 },
+      { "type": "speed", "count": 5 },
+      { "type": "giant", "count": 4 },
+      { "type": "summoner", "count": 4 },
+      { "type": "tank", "count": 5 },
+      { "type": "thrower", "count": 5 },
+      { "type": "sniper", "count": 8 }
+    ]
+  },
+  {
+    "wave": 13,
+    "zombies": [
+      { "type": "normal", "count": 4 },
+      { "type": "speed", "count": 5 },
+      { "type": "giant", "count": 4 },
+      { "type": "summoner", "count": 5 },
+      { "type": "tank", "count": 6 },
+      { "type": "thrower", "count": 7 },
+      { "type": "sniper", "count": 6 },
+      { "type": "linker", "count": 4 },
+      { "type": "Juggernaut", "count": 3 }
     ]
   }
 ]
