@@ -9,10 +9,22 @@ export const sounds = {
   shoot: new Audio("src/assets/sound/laserShoot.wav"),
   hitHurt: new Audio("src/assets/sound/hitHurt.wav"),
   powerUp: new Audio("src/assets/sound/powerUp.wav"),
+  
+  // --- NEW SOUNDS ---
+  powerProcess: new Audio("src/assets/sound/powerUp_process.wav"), 
+  dash: new Audio("src/assets/sound/Dash.wav"),                   
+  
   reload: new Audio("src/assets/sound/reload-gun.mp3"),
   victory: new Audio("src/assets/sound/victory.mp3"),
   gameOver: new Audio("src/assets/sound/game-over.mp3")
 };
+
+// Debug: Log if sounds fail to load
+Object.keys(sounds).forEach(key => {
+    sounds[key].onerror = () => console.error(`Audio Error: Could not load sound '${key}' from '${sounds[key].src}'`);
+    // Pre-load to ensure they are ready
+    sounds[key].load();
+});
 
 export let musicEnabled = true;
 export let sfxEnabled = true;
@@ -36,22 +48,35 @@ Object.values(sounds).forEach(s => s.volume = sfxVolume);
 const soundLastPlayed = {};
 
 export function playSound(name, throttleMs = 0) {
-  if (!sfxEnabled || !sounds[name]) return;
+  if (!sfxEnabled) return;
+  if (!sounds[name]) {
+      console.warn(`playSound: Sound '${name}' not found in registry.`);
+      return;
+  }
   
   const now = Date.now();
-  // If throttled, check time difference
   if (throttleMs > 0) {
     const last = soundLastPlayed[name] || 0;
-    if (now - last < throttleMs) return; // Skip sound
+    if (now - last < throttleMs) return; 
     soundLastPlayed[name] = now;
   }
 
-  // Clone node allows overlapping same sounds (e.g., rapid fire)
-  // unless we explicitly want to stop the previous one.
-  // For high frequency sounds like shoot/explosion, we use the throttle to limit count.
-  const soundClone = sounds[name].cloneNode();
-  soundClone.volume = sfxVolume;
-  soundClone.play().catch(() => {});
+  // Debug Log for Dash
+  if (name === "dash") console.log("🔊 playSound('dash') Triggered!");
+
+  // Attempt play
+  try {
+      const soundClone = sounds[name].cloneNode();
+      soundClone.volume = sfxVolume;
+      const playPromise = soundClone.play();
+      if (playPromise !== undefined) {
+          playPromise.catch(error => {
+              console.warn(`Audio Play Error for '${name}':`, error);
+          });
+      }
+  } catch(e) {
+      console.error("Audio Clone Error:", e);
+  }
 }
 
 export function toggleMusic(enabled) {
@@ -78,5 +103,4 @@ export function setSFXVolume(val) {
   localStorage.setItem("sfxVolume", sfxVolume);
 }
 
-// Global Access
 window.audioManager = { sounds, playSound, toggleMusic, toggleSFX };
