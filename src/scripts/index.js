@@ -8,45 +8,20 @@ import {
 } from "./state.js";
 
 import { drawPlayer, drawPlayerIndicator, getBulletStyleDef } from "./cosmetics.js";
-
-import { 
-  initUI, updateHUD, openUpgradeScreen, updateWaveUI, 
-  openPanel, closePanel, toggleGameUI 
-} from "./ui.js";
-
-import { 
-  sounds, playSound, backgroundMusic, musicEnabled 
-} from "./audio.js";
-
+import { playerShoot, playerTryReload, updatePlayerMovement, handleSprintKey, resetPlayer } from "./player.js";
+import { initUI, updateHUD, openUpgradeScreen, updateWaveUI, openPanel, closePanel, toggleGameUI } from "./ui.js";
+import { sounds, playSound, backgroundMusic, musicEnabled } from "./audio.js";
 import { camera, updateCamera, zoom } from "./camera.js";
-
-import { 
-  loadGameData, startWave, updateWaveLogic, waves, currentWave, 
-  waveSpawning, resetWaveState, zombiesData 
-} from "./waves.js";
-
-import { 
-  enemies, resetEnemies, updateEnemies, drawEnemies, 
-  handleBulletCollisions, handlePlayerCollisions, 
-  projectiles, updateProjectiles, drawProjectiles, 
-  handleProjectilePlayerCollision,
-  triggerExplosion 
-} from "./enemy.js";
-
+import { loadGameData, startWave, updateWaveLogic, waves, currentWave, waveSpawning, resetWaveState, zombiesData } from "./waves.js";
+import { enemies, resetEnemies, updateEnemies, drawEnemies, handleBulletCollisions, handlePlayerCollisions, projectiles, updateProjectiles, drawProjectiles, handleProjectilePlayerCollision, triggerExplosion } from "./enemy.js";
 import { reload } from "./reload.js";
-
 import { drawMap, resolveMapCollision, checkCollision } from "./map.js";
 import { initPathfinding, updatePathfinding } from "./pathfinding.js";
-
-import { 
-    drawAndHandlePowerups, initPowerupHUD, updatePowerupHUD, 
-    activePowerups, resetPowerups, pausePowerups, resumePowerups 
-} from "./powerup.js";
-
+import { drawAndHandlePowerups, initPowerupHUD, updatePowerupHUD, activePowerups, resetPowerups, pausePowerups, resumePowerups } from "./powerup.js";
 import { updateAchievement, loadAchievements } from "./achievement.js";
 import { initInput, updateInput, input } from "./input.js";
+import { addSessionCoins, saveGameEconomy, resetSessionCoins, sessionCoins, getCosmeticColor } from "./economy.js";
 
-// --- Menu Background ---
 const menuBackground = document.createElement("img");
 menuBackground.src = "src/assets/image/menuScreen1.png";
 menuBackground.id = "menuBackground";
@@ -58,13 +33,8 @@ document.body.appendChild(menuBackground);
 
 function showMenuBackground() { menuBackground.style.display = "block"; }
 function hideMenuBackground() { menuBackground.style.display = "none"; }
+function toggleAnimation(show) { const el = document.querySelector(".finisher-header"); if (el) el.style.display = show ? "block" : "none"; }
 
-function toggleAnimation(show) {
-    const el = document.querySelector(".finisher-header");
-    if (el) el.style.display = show ? "block" : "none";
-}
-
-// --- Global Vars ---
 let waveClearTimeout = null;
 let upgradeScreenShown = false;
 let lastTime = 0; 
@@ -73,75 +43,65 @@ let powerupsCollected = 0;
 let shakeAmount = 0;
 let floatingTexts = []; 
 let explosions = []; 
+let confetti = []; 
 
-function spawnFloatingText(x, y, text, color = "#fff", size = 12) {
-    floatingTexts.push({ x, y, text, color, size, life: 60 });
+export function spawnFloatingText(x, y, text, color = "#fff", size = 12) { floatingTexts.push({ x, y, text, color, size, life: 60 }); }
+function spawnExplosion(x, y, size, color = "orange") { explosions.push({ x, y, size, life: 1.0, color }); }
+function triggerShake(amount) { shakeAmount = amount; }
+
+// --- FIXED: Achievement Tracking Hook ---
+window.onBulletFired = (amount = 1) => { 
+    triggerShake(2); 
+    updateAchievement("3", amount); // ID "3" is Fire 1000 Bullets
+};
+
+function autoReload() { if (!isReloading && player.ammo === 0 && player.reserveAmmo > 0) playerTryReload(); }
+
+function spawnConfetti(camera) {
+    const colors = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#00ffff", "#ff00ff"];
+    const x = (camera.x + Math.random() * canvas.width);
+    const y = (camera.y + Math.random() * canvas.height * 0.5); 
+    
+    confetti.push({
+        x: x, y: y,
+        dx: (Math.random() - 0.5) * 5,
+        dy: Math.random() * -5 - 2, 
+        size: Math.random() * 6 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.2,
+        life: 150
+    });
 }
 
-function spawnExplosion(x, y, size, color = "orange") {
-    explosions.push({ x, y, size, life: 1.0, color });
+function startDeathSequence() {
+    if (!player.isDead && !player.isWinning) {
+        player.isDead = true;
+        player.deathTimer = 120; 
+        playSound("playerDeath"); 
+        
+        if (currentWave >= 2) { 
+             addSessionCoins(10);
+             spawnFloatingText(player.x, player.y - 60, "+10 Pity Coins", "gold", 14);
+        }
+        saveGameEconomy(); 
+    }
 }
 
-function triggerShake(amount) {
-    shakeAmount = amount;
-}
-
-function shootBullet(targetX, targetY) {
-  if (!gameRunning || player.ammo <= 0 || isReloading) return;
-
-  player.ammo--;
-  updateHUD();
-  updateAchievement("3", 1); 
-
-  const cx = player.x + player.width / 2;
-  const cy = player.y + player.height / 2;
-  const speed = 7;
-
-  // Adjust for Zoom/Camera
-  const worldX = targetX / zoom + camera.x;
-  const worldY = targetY / zoom + camera.y;
-  const angle = Math.atan2(worldY - cy, worldX - cx);
-
-  const styleId = player.cosmetics.bulletStyle || "default";
-
-  const fire = (ang) => {
-    spawnBullet(
-      cx, cy, 
-      Math.cos(ang) * speed, Math.sin(ang) * speed,
-      getPlayerDamage(),
-      styleId, 
-      false 
-    );
-  };
-
-  if (player.tripleShot) {
-    fire(angle - 0.25); fire(angle); fire(angle + 0.25);
-  } else {
-    fire(angle);
-  }
-
-  triggerShake(2); 
-  playSound("shoot", 50); 
-  window.onBulletFired && window.onBulletFired();
-}
-
-function tryReload() {
-  if (!isReloading && player.ammo < player.magazineSize && player.reserveAmmo > 0) {
-      setIsReloading(true);
-      playSound("reload");
-      setTimeout(() => { 
-        reload(player, updateHUD); 
-        setIsReloading(false); 
-      }, 3000);
-  }
-}
-
-function autoReload() {
-  if (!isReloading && player.ammo === 0 && player.reserveAmmo > 0) tryReload();
+function startVictorySequence() {
+    if (!player.isWinning && !player.isDead) {
+        player.isWinning = true;
+        player.victoryTimer = 240; 
+        playSound("victory"); 
+        
+        saveGameEconomy();
+        
+        bullets.forEach(b => b.active = false);
+    }
 }
 
 let frameCount = 0;
-// --- GAME LOOP ---
+
 function gameLoop(timestamp) {
   if (!gameRunning) return;
   
@@ -156,125 +116,91 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
     return;
   }
+  
+  if (player.isDead) {
+      if (player.deathTimer > 0) {
+          player.deathTimer -= timeScale; 
+          if (player.deathTimer > 30 && Math.floor(player.deathTimer) % 15 === 0) {
+               triggerExplosion(player.x + Math.random()*40 - 20, player.y + Math.random()*40 - 20, 0, { spawnExplosion: spawnExplosion });
+               triggerShake(2);
+          }
+          if (player.deathTimer <= 2 && player.deathTimer > -1) {
+               triggerExplosion(player.x + player.width/2, player.y + player.height/2, 0, { spawnExplosion, shake: triggerShake });
+          }
+      } else {
+          endGame(false);
+          return;
+      }
+  }
+
+  if (player.isWinning) {
+      player.victoryTimer -= timeScale;
+      if (Math.random() < 0.5 * timeScale) {
+          spawnConfetti(camera);
+          spawnConfetti(camera);
+      }
+      for (let i = confetti.length - 1; i >= 0; i--) {
+          let c = confetti[i];
+          c.x += c.dx * timeScale;
+          c.y += c.dy * timeScale;
+          c.dy += 0.1 * timeScale; 
+          c.rotation += c.rotSpeed * timeScale;
+          c.life -= timeScale;
+          if (c.life <= 0) confetti.splice(i, 1);
+      }
+      if (player.victoryTimer <= 0) {
+          endGame(true);
+          return;
+      }
+  }
 
   frameCount++;
-  if (frameCount % 15 === 0) {
-      updatePathfinding(player.x + player.width/2, player.y + player.height/2);
+  if (frameCount % 15 === 0) { 
+      updatePathfinding(player.x + player.width/2, player.y + player.height/2); 
   }
 
-  // --- 1. LOGIC UPDATES ---
-  updateInput(player.x, player.y, camera.x, camera.y, zoom);
-  player.sprinting = input.isSprinting;
-
-  if (player.dashCooldown > 0) player.dashCooldown -= deltaTime;
-  
-  if (player.dashActive) {
-      player.dashTime -= deltaTime;
-      if (player.dashTime <= 0) {
-          player.dashActive = false;
-          const isImmuneByPowerup = activePowerups.some(p => p.type === "Immune");
-          if (!isImmuneByPowerup) {
-              player.immune = false;
-          }
-      }
-  } else if (input.dashPressed && player.dashCooldown <= 0 && (input.move.x !== 0 || input.move.y !== 0)) {
-      // --- DASH TRIGGERED ---
-      console.log("⚡ DASH ACTIVATED: Playing Sound"); // Debug Log
-      player.dashActive = true;
-      player.dashTime = 200; 
-      player.dashCooldown = 1500; 
-      player.immune = true;
-      playSound("dash"); // <--- CHANGED FROM "select" TO "dash"
-  }
-
-  // Movement & Collision
-  let currentSpeed = player.normalSpeed;
-  if (player.dashActive) {
-      currentSpeed = player.sprintSpeed * 3.5; 
-  } else if (player.sprinting && player.stamina > 0) {
-      currentSpeed = player.sprintSpeed;
-      player.stamina -= 0.5 * timeScale;
-      if (player.stamina < 0) player.stamina = 0;
-  } else {
-      currentSpeed = player.normalSpeed;
-      const moving = Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05;
-      player.stamina += (moving ? 0.15 : 0.25) * timeScale;
-      if (player.stamina > player.maxStamina) player.stamina = player.maxStamina;
-  }
-  if (player.stamina === 0) player.sprinting = false;
-
-  if (Math.abs(input.move.x) > 0.05 || Math.abs(input.move.y) > 0.05) {
-      player.x += input.move.x * currentSpeed * timeScale;
-      player.y += input.move.y * currentSpeed * timeScale;
+  if (!player.isDead && !player.isWinning) {
+      updateInput(player.x, player.y, camera.x, camera.y, zoom);
+      player.sprinting = input.isSprinting;
       
-      // World Bounds
-      player.x = Math.max(0, Math.min(worldWidth - player.width, player.x));
-      player.y = Math.max(0, Math.min(worldHeight - player.height, player.y));
-
-      // Resolve Map Collision
+      updatePlayerMovement(input.keys || {}, canvas, timeScale);
       resolveMapCollision(player);
   }
 
   updateHUD();
   updateCamera(player);
   
-  // Bullets
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
       b.x += b.dx * timeScale;
       b.y += b.dy * timeScale;
-
       if (checkCollision(b.x - b.width, b.y - b.width, b.width*2, b.width*2)) {
           if (!b.hasHitWall) {
              b.hasHitWall = true;
              const centerX = b.x + b.width/2;
              const centerY = b.y + b.height/2;
-
              if (player.explosiveShot) {
-                triggerExplosion(centerX, centerY, b.damage || 1, { 
-                    spawnText: spawnFloatingText, 
-                    shake: triggerShake, 
-                    spawnExplosion: spawnExplosion 
-                });
-             } else {
-                spawnFloatingText(centerX, centerY, "•", "#ccc", 10);
-             }
+                triggerExplosion(centerX, centerY, b.damage || 1, { spawnText: spawnFloatingText, shake: triggerShake, spawnExplosion: spawnExplosion });
+             } else { spawnFloatingText(centerX, centerY, "•", "#ccc", 10); }
           }
-
-          if (!player.piercingShot) {
-              b.active = false; 
-          }
-      } else {
-          b.hasHitWall = false;
-      }
-
-      if (Math.hypot(b.x - player.x, b.y - player.y) > 2000) {
-        b.active = false; 
-      }
+          if (!player.piercingShot) b.active = false; 
+      } else { b.hasHitWall = false; }
+      if (Math.hypot(b.x - player.x, b.y - player.y) > 2000) b.active = false; 
     }
   }
 
-  // Update Explosions
   for (let i = explosions.length - 1; i >= 0; i--) {
     explosions[i].life -= 0.05 * timeScale;
     if (explosions[i].life <= 0) explosions.splice(i, 1);
   }
 
-  // Enemies
   import("./waves.js").then(module => {
      updateEnemies(player, canvas, module.zombiesData || zombiesData, projectiles, true, null, timeScale, ctx); 
-     
      const sfxWrapper = { currentTime: 0, play: () => { playSound("explosion", 80); return Promise.resolve(); } };
      const hitWrapper = { currentTime: 0, play: () => { playSound("hitHurt", 50); return Promise.resolve(); } };
-     const effects = { 
-         spawnText: spawnFloatingText, 
-         shake: triggerShake, 
-         spawnExplosion: spawnExplosion
-     };
-
+     const effects = { spawnText: spawnFloatingText, shake: triggerShake, spawnExplosion: spawnExplosion };
      handleBulletCollisions(bullets, true, sfxWrapper, { value: score }, document.getElementById("score"), module.zombiesData || zombiesData, canvas, hitWrapper, player, effects);
-     
      setScore(parseInt(document.getElementById("score").textContent.replace(/\D/g, "")) || 0);
   });
   
@@ -282,14 +208,25 @@ function gameLoop(timestamp) {
   updateWaveLogic();
   autoReload();
 
-  if (handlePlayerCollisions(player, updateHUD, endGame)) return;
-  if (handleProjectilePlayerCollision(player, updateHUD, endGame)) return;
+  handlePlayerCollisions(player, updateHUD, startDeathSequence);
+  handleProjectilePlayerCollision(player, updateHUD, startDeathSequence);
 
-  // Wave Clear
   if (!waveSpawning && enemies.length === 0) {
     if (!waveClearTimeout) {
       waveClearTimeout = setTimeout(() => {
         waveClearTimeout = null;
+        
+        let reward = 5;
+        if ((currentWave + 1) % 3 === 0) reward += 5;
+        
+        addSessionCoins(reward);
+        spawnFloatingText(player.x, player.y - 50, `+${reward} Coins!`, "gold", 20);
+        playSound("powerUp"); 
+
+        if ((currentWave + 2) % 5 === 0) {
+             spawnFloatingText(player.x, player.y - 80, "Reinforcements Incoming...", "#4fc3f7", 14);
+        }
+
         if ((currentWave + 1) % 3 === 0 && !upgradeScreenShown) {
           setPaused(true);
           pausePowerups();
@@ -307,7 +244,6 @@ function gameLoop(timestamp) {
     }
   }
 
-  // --- 2. DRAWING ---
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
   ctx.save();
@@ -321,10 +257,9 @@ function gameLoop(timestamp) {
 
   ctx.save();
   ctx.scale(zoom, zoom);
-
   drawMap(ctx, camera);
   
-  if (player.dashActive) {
+  if (player.dashActive && !player.isDead) {
       ctx.globalAlpha = 0.4;
       ctx.fillStyle = player.cosmetics.bodyColor || "cyan"; 
       ctx.fillRect(Math.round(player.x - camera.x - input.move.x*15), Math.round(player.y - camera.y - input.move.y*15), player.width, player.height);
@@ -332,37 +267,92 @@ function gameLoop(timestamp) {
       ctx.globalAlpha = 1.0;
   }
 
-  drawPlayer(ctx, player, input.aim, input.move, camera);
+  if (player.isWinning) {
+      ctx.save();
+      for(let c of confetti) {
+          ctx.translate(c.x - camera.x, c.y - camera.y);
+          ctx.rotate(c.rotation);
+          ctx.fillStyle = c.color;
+          ctx.fillRect(-c.size/2, -c.size/2, c.size, c.size);
+          ctx.rotate(-c.rotation);
+          ctx.translate(-(c.x - camera.x), -(c.y - camera.y));
+      }
+      ctx.restore();
+  }
+
+  if (player.isDead) {
+      ctx.save();
+      const px = player.x - camera.x + player.width / 2;
+      const py = player.y - camera.y + player.height / 2;
+      ctx.translate(px, py);
+      
+      const progress = 1 - (player.deathTimer / 120);
+      const rotation = Math.pow(progress, 3) * 30; 
+      ctx.rotate(rotation);
+      
+      let scale = 1;
+      if (player.deathTimer > 40) { scale = 1 + Math.sin(player.deathTimer) * 0.1; } 
+      else { scale = Math.max(0, player.deathTimer / 40); }
+      ctx.scale(scale, scale);
+      
+      if (player.deathTimer > 60) { ctx.globalAlpha = 0.6 + Math.random() * 0.4; }
+
+      const dummyPlayer = { ...player, x: -player.width/2, y: -player.height/2 };
+      const dummyCamera = { x: 0, y: 0 }; 
+      drawPlayer(ctx, dummyPlayer, {x:0, y:0}, {x:0, y:0}, dummyCamera);
+      ctx.restore();
+
+  } else if (player.isWinning) {
+      ctx.save();
+      const px = player.x - camera.x + player.width / 2;
+      const py = player.y - camera.y + player.height / 2;
+      ctx.translate(px, py);
+      
+      const jumpOffset = Math.sin(player.victoryTimer * 0.2) * 20; 
+      ctx.translate(0, jumpOffset);
+      ctx.rotate(Math.sin(player.victoryTimer * 0.1) * 0.2);
+      
+      const dummyPlayer = { ...player, x: -player.width/2, y: -player.height/2 };
+      const dummyCamera = { x: 0, y: 0 }; 
+      drawPlayer(ctx, dummyPlayer, {x:0, y:0}, {x:0, y:0}, dummyCamera);
+      
+      ctx.fillStyle = "gold";
+      ctx.font = "20px 'Press Start 2P', sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 4;
+      ctx.strokeText("VICTORY!", 0, -50);
+      ctx.fillText("VICTORY!", 0, -50);
+      
+      ctx.restore();
+
+  } else {
+      drawPlayer(ctx, player, input.aim, input.move, camera);
+      
+      if (player.hurtTime && player.hurtTime > 0) {
+          ctx.save();
+          ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
+          ctx.fillRect(player.x - camera.x, player.y - camera.y, player.width, player.height);
+          ctx.restore();
+      }
+  }
 
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (b.active) {
       const bx = b.x - camera.x;
       const by = b.y - camera.y;
+      if (!Number.isFinite(bx) || !Number.isFinite(by)) continue; 
       const styleDef = getBulletStyleDef(b.color); 
-      
-      ctx.shadowColor = styleDef.color;
-      ctx.shadowBlur = 10;
-
+      ctx.shadowColor = styleDef.color; ctx.shadowBlur = 10;
       if (styleDef.type === "gradient") {
           const grad = ctx.createLinearGradient(bx - b.width, by - b.width, bx + b.width, by + b.width);
-          styleDef.colors.forEach((c, idx) => grad.addColorStop(idx / (styleDef.colors.length - 1), c));
+          if (styleDef.colors && styleDef.colors.length > 0) { styleDef.colors.forEach((c, idx) => grad.addColorStop(idx / (styleDef.colors.length - 1), c)); } 
+          else { grad.addColorStop(0, "white"); }
           ctx.fillStyle = grad;
-      } else {
-          ctx.fillStyle = styleDef.color;
-      }
-
-      ctx.globalAlpha = 0.4; 
-      ctx.beginPath();
-      ctx.arc(bx, by, b.width, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.globalAlpha = 1.0;
-      ctx.fillStyle = "white";
-      ctx.beginPath();
-      ctx.arc(bx, by, b.width / 2.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0; 
+      } else { ctx.fillStyle = styleDef.color; }
+      ctx.globalAlpha = 0.4; ctx.beginPath(); ctx.arc(bx, by, b.width, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1.0; ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(bx, by, b.width / 2.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; 
     }
   }
 
@@ -380,40 +370,26 @@ function gameLoop(timestamp) {
   ctx.globalAlpha = 1.0;
 
   drawAndHandlePowerups(ctx, player, updateHUD, true, sounds.powerUp, undefined, camera, (type) => {
-      usedPowerup = true;
-      powerupsCollected++;
-      updateAchievement("5", 1); 
-      if (powerupsCollected >= 20) {
-          updateAchievement("6", 1); 
-      }
+      usedPowerup = true; powerupsCollected++; updateAchievement("5", 1); 
+      if (powerupsCollected >= 20) { updateAchievement("6", 1); }
   });
   
   drawPlayerIndicator(ctx, player, input.aim, camera);
   
   for (let i = floatingTexts.length - 1; i >= 0; i--) {
       const ft = floatingTexts[i];
-      ft.y -= 0.5 * timeScale; 
-      ft.life -= 1 * timeScale;
-      
+      ft.y -= 0.5 * timeScale; ft.life -= 1 * timeScale;
       ctx.globalAlpha = Math.max(0, ft.life / 40);
       ctx.fillStyle = ft.color;
       ctx.font = `${ft.size}px 'Press Start 2P', sans-serif`;
-      ctx.strokeStyle = "black";
-      ctx.lineWidth = 3;
-      
-      const dx = ft.x - camera.x;
-      const dy = ft.y - camera.y;
-      
-      ctx.strokeText(ft.text, dx, dy);
-      ctx.fillText(ft.text, dx, dy);
-      
+      ctx.strokeStyle = "black"; ctx.lineWidth = 3;
+      const dx = ft.x - camera.x; const dy = ft.y - camera.y;
+      ctx.strokeText(ft.text, dx, dy); ctx.fillText(ft.text, dx, dy);
       if (ft.life <= 0) floatingTexts.splice(i, 1);
   }
   ctx.globalAlpha = 1.0;
 
-  ctx.restore(); 
-  ctx.restore(); 
-  
+  ctx.restore(); ctx.restore(); 
   try { updatePowerupHUD(player); } catch (e) {}
   
   requestAnimationFrame(gameLoop);
@@ -423,7 +399,9 @@ function checkNextWave() {
   upgradeScreenShown = false;
   updateAchievement("4", currentWave + 1);
   const success = startWave(currentWave + 1);
-  if (!success) endGame(true); 
+  if (!success) {
+      startVictorySequence();
+  }
 }
 
 async function startGame() {
@@ -434,7 +412,7 @@ async function startGame() {
   const vLabel = document.getElementById("versionLabel");
   if (vLabel) vLabel.style.display = "none";
   
-  playSound("select");
+  playSound("select"); 
   if (musicEnabled) {
     backgroundMusic.currentTime = 0;
     backgroundMusic.play().catch(()=>{});
@@ -447,7 +425,12 @@ async function startGame() {
   initUI();
   initPowerupHUD();
   toggleGameUI(true);
-  initInput(canvas, { onShoot: shootBullet, onReload: tryReload });
+  
+  initInput(canvas, { 
+      onShoot: (x, y) => playerShoot(x, y, camera, zoom), 
+      onReload: playerTryReload 
+  });
+  
   startWave(0);
   
   lastTime = 0; 
@@ -455,8 +438,30 @@ async function startGame() {
 }
 
 function resetGame() {
-  if (waveClearTimeout) { clearTimeout(waveClearTimeout); waveClearTimeout = null; }
+  if (waveClearTimeout) { 
+    clearTimeout(waveClearTimeout); 
+    waveClearTimeout = null; 
+  }
+  
+  resetSessionCoins(); 
+
+  // --- FIXED: LOAD COSMETICS AND HANDLE 'GREEN' -> 'LIME' ---
+  let savedBody = localStorage.getItem("equippedBodyColor") || "cyan";
+  if (savedBody === "green") savedBody = "lime"; // MIGRATION FIX
+
+  player.cosmetics.bodyColor = savedBody;
+  player.cosmetics.hatStyle = localStorage.getItem("equippedHatStyle") || "none";
+  player.cosmetics.eyeStyle = localStorage.getItem("equippedEyeStyle") || "normal";
+  player.cosmetics.indicatorStyle = localStorage.getItem("equippedIndicatorStyle") || "dot";
+  player.cosmetics.bulletStyle = localStorage.getItem("equippedBulletStyle") || "default";
+
   resetPlayerState();
+  
+  // Backup player cosmetics because resetPlayer might wipe them
+  const safeCosmetics = { ...player.cosmetics };
+  resetPlayer(canvas); 
+  player.cosmetics = safeCosmetics; // Restore them
+
   resetEnemies();
   resetWaveState();
   resetPowerups();
@@ -466,12 +471,13 @@ function resetGame() {
   shakeAmount = 0;
   floatingTexts = [];
   explosions = []; 
+  confetti = []; 
 }
 
 function endGame(victory = false) {
   setGameRunning(false);
   const finalScore = document.getElementById("finalScore");
-  finalScore.textContent = (victory ? "You Win! " : "Your Score: ") + score;
+  finalScore.innerHTML = (victory ? "You Win!<br>" : "Your Score: ") + score + "<br><br><span style='color:gold'>Coins Earned: " + sessionCoins + "</span>";
   document.getElementById("gameOver").style.display = "flex";
   backgroundMusic.pause();
   
@@ -479,7 +485,7 @@ function endGame(victory = false) {
       updateAchievement("1", 1);
   }
   
-  playSound(victory ? "victory" : "gameOver");
+  if (!victory) playSound("game-over"); 
   
   toggleGameUI(false);
   resetPowerups();
@@ -488,26 +494,48 @@ function endGame(victory = false) {
   if(wBtn) wBtn.style.display = "none";
 }
 
-function quitGame() { playSound("select"); window.close(); }
-function restartGame() { setPaused(false); hidePauseOverlay(); startGame(); }
+function quitGame() { 
+  playSound("select"); 
+  window.close(); 
+}
+
+function restartGame() { 
+  setPaused(false); 
+  hidePauseOverlay(); 
+  
+  saveGameEconomy();
+  
+  startGame(); 
+}
 
 function backToMenu() {
   setPaused(false); 
   hidePauseOverlay();
   setGameRunning(false);
+  
+  saveGameEconomy(); 
+  resetSessionCoins(); 
+
   document.getElementById("gameOver").style.display = "none";
   document.getElementById("menu").style.display = "flex";
+  
   const menu1 = document.getElementById("menu1");
   if(menu1) menu1.style.display = "flex";
+  
   const vLabel = document.getElementById("versionLabel");
   if (vLabel) vLabel.style.display = "block";
+  
   showMenuBackground();
   toggleAnimation(true);
   playSound("select");
   toggleGameUI(false);
   resetPowerups();
+  
   const wBtn = document.getElementById("wardrobeBtn");
   if(wBtn) wBtn.style.display = "flex";
+  
+  const wCoin = document.getElementById("wardrobeCoins");
+  if(wCoin) wCoin.textContent = "Coins: " + (parseInt(localStorage.getItem("zombieCoins")) || 0);
 }
 
 function showPauseOverlay() {
@@ -526,6 +554,7 @@ function showPauseOverlay() {
       <button id="pauseMenuBtn" style="font-size:20px;padding:10px 26px;margin-top:14px;">Main Menu</button>
     `;
     document.body.appendChild(overlay);
+    
     document.getElementById("resumeBtn").onclick = resumeGame;
     document.getElementById("pauseRestartBtn").onclick = () => { hidePauseOverlay(); restartGame(); };
     document.getElementById("pauseMenuBtn").onclick = () => { hidePauseOverlay(); backToMenu(); };
@@ -556,6 +585,8 @@ function resumeGame() {
   lastTime = 0; 
   requestAnimationFrame(gameLoop);
 }
+
+// --- CONTROLS & SETTINGS ---
 
 const musicSlider = document.getElementById("musicSlider");
 if(musicSlider) {
@@ -598,35 +629,94 @@ window.addEventListener("device-changed", (e) => {
   }
 });
 
-function openSettings() { const m = document.getElementById("menu"); if (m) m.style.display = "none"; const s = document.getElementById("settings"); if (s) s.style.display = "flex"; hideAllSections(); showMainButtons(); playSound("select"); }
-function closeSettings() { const s = document.getElementById("settings"); if (s) s.style.display = "none"; const m = document.getElementById("menu"); if (m) m.style.display = "flex"; playSound("select"); }
+function openSettings() { 
+  const m = document.getElementById("menu"); 
+  if (m) m.style.display = "none"; 
+  const s = document.getElementById("settings"); 
+  if (s) s.style.display = "flex"; 
+  hideAllSections(); 
+  showMainButtons(); 
+  playSound("select"); 
+}
 
-function openAudio() { hideMainButtons(); const a = document.getElementById("audioPanel"); if (a) a.style.display = "block"; playSound("select"); }
-function backAudio() { const a = document.getElementById("audioPanel"); if (a) a.style.display = "none"; showMainButtons(); playSound("select"); }
+function closeSettings() { 
+  const s = document.getElementById("settings"); 
+  if (s) s.style.display = "none"; 
+  const m = document.getElementById("menu"); 
+  if (m) m.style.display = "flex"; 
+  playSound("select"); 
+}
 
-function openControl() { openPanel('controlPanel'); playSound("select"); }
-function backControl() { closePanel('controlPanel'); playSound("select"); }
+function openAudio() { 
+  hideMainButtons(); 
+  const a = document.getElementById("audioPanel"); 
+  if (a) a.style.display = "block"; 
+  playSound("select"); 
+}
 
-function openCredit() { openPanel('creditsPanel'); playSound("select"); }
-function backCredit() { closePanel('creditsPanel'); playSound("select"); }
+function backAudio() { 
+  const a = document.getElementById("audioPanel"); 
+  if (a) a.style.display = "none"; 
+  showMainButtons(); 
+  playSound("select"); 
+}
 
-function hideAllSections() { ["audioSection", "controlSection", "creditSection"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; }); }
-function hideMainButtons() { ["audioSetting", "controlSetting", "howToPlay", "close-setting"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; }); }
-function showMainButtons() { ["audioSetting", "controlSetting", "howToPlay", "close-setting"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "flex"; }); }
+function openControl() { 
+  openPanel('controlPanel'); 
+  playSound("select"); 
+}
+
+function backControl() { 
+  closePanel('controlPanel'); 
+  playSound("select"); 
+}
+
+function openCredit() { 
+  openPanel('creditsPanel'); 
+  playSound("select"); 
+}
+
+function backCredit() { 
+  closePanel('creditsPanel'); 
+  playSound("select"); 
+}
+
+function hideAllSections() { 
+  ["audioSection", "controlSection", "creditSection"].forEach(id => { 
+    const el = document.getElementById(id); 
+    if (el) el.style.display = "none"; 
+  }); 
+}
+
+function hideMainButtons() { 
+  ["audioSetting", "controlSetting", "howToPlay", "close-setting"].forEach(id => { 
+    const el = document.getElementById(id); 
+    if (el) el.style.display = "none"; 
+  }); 
+}
+
+function showMainButtons() { 
+  ["audioSetting", "controlSetting", "howToPlay", "close-setting"].forEach(id => { 
+    const el = document.getElementById(id); 
+    if (el) el.style.display = "flex"; 
+  }); 
+}
 
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().then(() => {
-      const btn = document.getElementById("fullscreenBtn"); if (btn) btn.classList.add("fullscreen-active");
+      const btn = document.getElementById("fullscreenBtn"); 
+      if (btn) btn.classList.add("fullscreen-active");
     }).catch(()=>{});
   } else {
     document.exitFullscreen().then(() => {
-      const btn = document.getElementById("fullscreenBtn"); if (btn) btn.classList.remove("fullscreen-active");
+      const btn = document.getElementById("fullscreenBtn"); 
+      if (btn) btn.classList.remove("fullscreen-active");
     }).catch(()=>{});
   }
 }
 
-// Global Assignments
+// --- Global Assignments ---
 window.startGame = startGame;
 window.quitGame = quitGame;
 window.restartGame = restartGame;
@@ -658,6 +748,11 @@ window.addEventListener("DOMContentLoaded", () => {
   
   showMenuBackground();
   toggleAnimation(true);
+});
+
+// NEW: Save coins on close/refresh
+window.addEventListener("beforeunload", () => {
+  saveGameEconomy();
 });
 
 document.addEventListener("keydown", e => {

@@ -20,7 +20,7 @@ export const bullets = new Array(MAX_BULLETS).fill(null).map(() => ({
   dx: 0, dy: 0,
   width: 8, height: 8,
   damage: 1,
-  color: "default", // Stores the Cosmetic ID now
+  color: "default", 
   isCrit: false
 }));
 
@@ -34,7 +34,7 @@ export function spawnBullet(x, y, dx, dy, damage, styleId, isCrit) {
       b.dx = dx;
       b.dy = dy;
       b.damage = damage;
-      b.color = styleId; // Pass the cosmetic ID (e.g., "fire", "rainbow")
+      b.color = styleId; 
       b.isCrit = isCrit;
       return;
     }
@@ -50,8 +50,8 @@ export function clearBullets() {
 // Player State
 export const INITIAL_PLAYER_BASES = {
   maxHealth: 10,
-  normalSpeed: 4,
-  sprintSpeed: 6,
+  normalSpeed: 5,
+  sprintSpeed: 7.5,
   magazine: 40,
   baseDamage: 1,
   baseCritChance: 0.05,
@@ -64,21 +64,40 @@ const savedCosmetics = JSON.parse(localStorage.getItem("playerCosmetics")) || {
   eyeStyle: "normal",
   hatStyle: "none",
   indicatorStyle: "dot",
-  bulletStyle: "default" // NEW: Bullet Style
+  bulletStyle: "default" 
 };
 
 export let player = {
   x: 0, y: 0, width: 32, height: 32,
-  normalSpeed: 4, sprintSpeed: 6, speed: 4,
+  
+  normalSpeed: INITIAL_PLAYER_BASES.normalSpeed, 
+  sprintSpeed: INITIAL_PLAYER_BASES.sprintSpeed, 
+  speed: INITIAL_PLAYER_BASES.normalSpeed,
+  
   maxHealth: 10, health: 10,
   magazineSize: 40, ammo: 40, reserveAmmo: 1000,
   stamina: 100, maxStamina: 100,
+  
   sprinting: false,
-  dashActive: false, dashTime: 0, dashCooldown: 0,
+  dashActive: false, 
+  dashTime: 0, 
+  dashCooldown: 0,
+  
   upgrades: { damage: 0, health: 0, speed: 0, magazine: 0, critChance: 0, critDamage: 0 },
   critChance: 0.05, critMultiplier: 1.5,
   lastHitTime: 0, immune: false,
   doubleDamage: false, tripleShot: false, alwaysCrit: false,
+  
+  // --- DEATH & WIN STATES ---
+  isDead: false,
+  deathTimer: 0,
+  
+  // NEW: Victory State
+  isWinning: false,
+  victoryTimer: 0,
+  
+  hurtTime: 0,       
+  maxHurtTime: 10,   
   
   cosmetics: savedCosmetics
 };
@@ -87,7 +106,6 @@ export function saveCosmetics() {
   localStorage.setItem("playerCosmetics", JSON.stringify(player.cosmetics));
 }
 
-// Functions to manage state
 export function setGameRunning(val) { gameRunning = val; }
 export function setPaused(val) { paused = val; }
 export function setScore(val) { score = val; }
@@ -129,21 +147,18 @@ export function resetPlayerState() {
   player.ammo = player.magazineSize;
   player.reserveAmmo = 1000;
   player.stamina = player.maxStamina;
-  player.sprinting = false;
   
-  player.immune = false;
+  // Reset Flags
+  player.isDead = false;
+  player.deathTimer = 0;
+  player.isWinning = false; // Reset Win State
+  player.victoryTimer = 0;
+  player.hurtTime = 0;
+  
   player.doubleDamage = false;
   player.tripleShot = false;
   player.alwaysCrit = false;
-  
-  player.dashActive = false;
-  player.dashCooldown = 0;
-  
-  score = 0;
-  clearBullets();
-  isReloading = false;
+  player.piercingShot = false;
+  player.explosiveShot = false;
+  player.immune = false;
 }
-
-window.player = player;
-window.gameCanvas = canvas;
-window.gameState = { gameRunning, paused, score, bullets };

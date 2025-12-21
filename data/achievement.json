@@ -25,7 +25,7 @@
   },
   "5": {
     "name": "Lucky Draw",
-    "description": "Collect 20 powerups in one run.",
+    "description": "Collect 20 powerups.",
     "goal": 20,
     "progress": 0
   }

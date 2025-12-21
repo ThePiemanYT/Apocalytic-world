@@ -1,138 +1,202 @@
 /* src/scripts/player.js */
 import { input } from "./input.js";
 import { playSound } from "./audio.js";
+import { updateHUD } from "./ui.js";
+import { reload } from "./reload.js";
+import { 
+    player, bullets, spawnBullet, getPlayerDamage, 
+    isReloading, setIsReloading, setScore, 
+    worldWidth, worldHeight 
+} from "./state.js";
 
-// --- Player Object ---
-export let player = {
-  x: 0, y: 0, width: 40, height: 40,
-  baseSpeed: 4,
-  maxHealth: 5, health: 5,
-  magazineSize: 40, ammo: 40, reserveAmmo: 1000,
-  stamina: 100, maxStamina: 100,
-  sprinting: false,
-  
-  // Dash State
-  dashCooldown: 0,
-  dashTime: 0,
+function safePlaySound(name, volume = 1.0) {
+    try {
+        if (window.audioManager && window.audioManager.sounds && window.audioManager.sounds[name]) {
+            playSound(name, volume);
+        }
+    } catch (e) { console.warn("Audio Error:", e); }
+}
 
-  // --- Upgrade stats ---
-  upgrades: {
-    damage: 0,    // +1 damage per level
-    health: 0,    // +2 max health per level
-    speed: 0,     // +0.5 speed per level
-    recoil: 0,    // reduces recoil when hit
-    knockback: 0  // increases bullet knockback on enemies
-  }
-};
+// --- 1. Damage & Hurt Logic ---
+export function takeDamage(amount) {
+    if (player.immune || player.isDead) return;
 
-// --- Stamina Bar UI (bottom left) ---
-const staminaBar = document.createElement("div");
-staminaBar.id = "staminaBar";
-Object.assign(staminaBar.style, {
-  position: "absolute", bottom: "60px", left: "32px",
-  width: "200px", height: "20px", background: "#444",
-  border: "2px solid #fff", borderRadius: "8px",
-  overflow: "hidden", zIndex: "100"
-});
-document.body.appendChild(staminaBar);
+    player.health -= amount;
+    
+    player.hurtTime = 15; 
+    safePlaySound("hitHurt", 0.8); 
+    
+    const healthBar = document.getElementById("healthFill");
+    if (healthBar) {
+        const percent = Math.max(0, player.health) / player.maxHealth;
+        healthBar.style.width = (percent * 100) + "%";
+    }
+    
+    if (player.health <= 0) {
+        player.health = 0;
+        
+        if (!player.isDead) {
+            player.isDead = true;
+            player.deathTimer = 120; 
+            safePlaySound("playerDeath", 1.0); 
+        }
+    }
+}
 
-const staminaFill = document.createElement("div");
-Object.assign(staminaFill.style, {
-  height: "100%", background: "linear-gradient(90deg, #80dfff, #4fc3f7)", width: "100%"
-});
-staminaBar.appendChild(staminaFill);
+// --- 2. Shooting Logic ---
+export function playerShoot(targetX, targetY, camera, zoom) {
+    if (!player || player.ammo <= 0 || isReloading) return;
+
+    player.ammo--;
+    updateHUD();
+    
+    const cx = player.x + player.width / 2;
+    const cy = player.y + player.height / 2;
+    const speed = 7; 
+    const realZoom = zoom || 1; 
+    const worldX = targetX / realZoom + camera.x;
+    const worldY = targetY / realZoom + camera.y;
+    const angle = Math.atan2(worldY - cy, worldX - cx);
+
+    const styleId = player.cosmetics?.bulletStyle || "default";
+
+    const fire = (ang) => {
+        spawnBullet(cx, cy, Math.cos(ang) * speed, Math.sin(ang) * speed, getPlayerDamage(), styleId, false);
+    };
+
+    // --- FIX: Count actual bullets fired ---
+    let bulletsFired = 1;
+    if (player.tripleShot) {
+        fire(angle - 0.25); fire(angle); fire(angle + 0.25);
+        bulletsFired = 3;
+    } else {
+        fire(angle);
+    }
+
+    safePlaySound("laserShoot", 0.5); 
+    
+    // Pass the count to the global handler
+    if (window.onBulletFired) window.onBulletFired(bulletsFired);
+}
+
+// --- 3. Reload Logic ---
+export function playerTryReload() {
+    if (!isReloading && player.ammo < player.magazineSize && player.reserveAmmo > 0) {
+        setIsReloading(true);
+        safePlaySound("reload-gun"); 
+        
+        setTimeout(() => { 
+            reload(player, updateHUD); 
+            setIsReloading(false); 
+        }, 3000); 
+    }
+}
+
+// --- 4. Stamina UI Helper ---
+let staminaBar, staminaFill;
+function initStaminaBar() {
+    const existingBar = document.getElementById("staminaBar");
+    if (existingBar) {
+        staminaBar = existingBar;
+        staminaFill = staminaBar.querySelector("div");
+        if (!staminaFill) {
+            staminaFill = document.createElement("div");
+            Object.assign(staminaFill.style, { height: "100%", background: "linear-gradient(90deg, #80dfff, #4fc3f7)", width: "100%" });
+            staminaBar.appendChild(staminaFill);
+        }
+        return;
+    }
+    staminaBar = document.createElement("div");
+    staminaBar.id = "staminaBar";
+    Object.assign(staminaBar.style, { position: "absolute", bottom: "60px", left: "32px", width: "200px", height: "20px", background: "#444", border: "2px solid #fff", borderRadius: "8px", overflow: "hidden", zIndex: "100" });
+    document.body.appendChild(staminaBar);
+
+    staminaFill = document.createElement("div");
+    Object.assign(staminaFill.style, { height: "100%", background: "linear-gradient(90deg, #80dfff, #4fc3f7)", width: "100%" });
+    staminaBar.appendChild(staminaFill);
+}
 
 export function updateStaminaBar() {
-  staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
+    if (!staminaFill) initStaminaBar();
+    if (staminaFill) staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
 }
 
-// --- Health Bar UI ---
-export function updateHealthBar(healthBarElem) {
-  const percent = Math.max(0, player.health) / player.maxHealth;
-  healthBarElem.style.width = (percent * 100) + "%";
-  if (percent > 0.6) healthBarElem.style.background = "linear-gradient(90deg, #4CAF50, #ffe066)";
-  else if (percent > 0.3) healthBarElem.style.background = "linear-gradient(90deg, orange, #ffe066)";
-  else healthBarElem.style.background = "linear-gradient(90deg, #d32f2f, #ffe066)";
-}
-
-// --- Movement & Sprint Logic ---
 export function handleSprintKey(e, down) {
-  if (e.key === "Shift") player.sprinting = down;
+    if (e.key === "Shift") player.sprinting = down;
 }
 
-// --- Optimized Movement & Sprint Logic ---
-export function updatePlayerMovement(keys, canvas) {
-  let speedMultiplier = 1;
+// --- 5. Movement Logic ---
+export function updatePlayerMovement(keys, canvas, timeScale = 1) {
+    if (!player) return;
+    if (player.hurtTime > 0) player.hurtTime--;
 
-  // 1. Dash Logic (High priority)
-  if (player.dashTime > 0) {
-      speedMultiplier = 3.5; // Burst speed
-      player.dashTime--;
-  } else {
-      // Cooldown Tick
-      if (player.dashCooldown > 0) player.dashCooldown--;
+    let speedMultiplier = 1;
 
-      // Check Dash Input
-      const DASH_COST = 25;
-      const DASH_COOLDOWN_FRAMES = 45; // ~0.75s
-      const DASH_DURATION = 10;        // ~0.16s
+    // Dash
+    if (player.dashTime > 0) {
+        speedMultiplier = 3.5; 
+        player.dashTime--;
+        player.dashActive = true; 
+    } else {
+        player.dashActive = false;
+        if (player.dashCooldown > 0) player.dashCooldown--;
 
-      if (input.dashPressed && player.dashCooldown <= 0 && player.stamina >= DASH_COST) {
-          player.dashTime = DASH_DURATION;
-          player.dashCooldown = DASH_COOLDOWN_FRAMES;
-          player.stamina -= DASH_COST;
-          playSound("dash"); // <--- PLAY DASH SOUND
-          updateStaminaBar();
-      } 
-      // 2. Sprint Logic (Low priority)
-      else {
-          const minSprintStamina = 20;
-          let canSprint = player.sprinting && player.stamina > minSprintStamina;
+        const DASH_COST = 25;
+        const DASH_COOLDOWN_FRAMES = 45; 
+        const DASH_DURATION = 10;        
 
-          if (canSprint) {
-              speedMultiplier = 1.6;
-              player.stamina -= 0.5;
-              if (player.stamina < 0) player.stamina = 0;
-          } else {
-              let moving = keys["ArrowLeft"] || keys["ArrowRight"] || keys["ArrowUp"] || keys["ArrowDown"];
-              let regen = moving ? 0.15 : 0.25;
-              player.stamina += regen;
-              if (player.stamina > player.maxStamina) player.stamina = player.maxStamina;
-              if (player.stamina < minSprintStamina) player.sprinting = false;
-          }
-      }
-  }
-  updateStaminaBar();
+        if (input.dashPressed && player.dashCooldown <= 0 && player.stamina >= DASH_COST) {
+            player.dashTime = DASH_DURATION;
+            player.dashCooldown = DASH_COOLDOWN_FRAMES;
+            player.stamina -= DASH_COST;
+            player.dashActive = true; 
+            safePlaySound("Dash"); 
+            updateStaminaBar();
+        } 
+        else {
+            const minSprintStamina = 20;
+            let canSprint = player.sprinting && player.stamina > minSprintStamina;
+            if (canSprint) {
+                speedMultiplier = 1.6;
+                player.stamina -= 0.5 * timeScale; 
+                if (player.stamina < 0) player.stamina = 0;
+            } else {
+                let moving = keys["ArrowLeft"] || keys["ArrowRight"] || keys["ArrowUp"] || keys["ArrowDown"] || Math.abs(input.move.x) > 0.1 || Math.abs(input.move.y) > 0.1;
+                let regen = moving ? 0.15 : 0.25;
+                player.stamina += regen * timeScale;
+                if (player.stamina > player.maxStamina) player.stamina = player.maxStamina;
+                if (player.stamina < minSprintStamina) player.sprinting = false;
+            }
+        }
+    }
+    updateStaminaBar();
 
-  // Movement (diagonal friendly)
-  let dx = 0, dy = 0;
-  // Combine Input (Keys + Virtual Joystick from Input module)
-  if (keys["ArrowLeft"] || input.move.x < -0.1) dx -= 1;
-  if (keys["ArrowRight"] || input.move.x > 0.1) dx += 1;
-  if (keys["ArrowUp"] || input.move.y < -0.1) dy -= 1;
-  if (keys["ArrowDown"] || input.move.y > 0.1) dy += 1;
+    let dx = 0, dy = 0;
+    if (keys["ArrowLeft"]) dx -= 1;
+    if (keys["ArrowRight"]) dx += 1;
+    if (keys["ArrowUp"]) dy -= 1;
+    if (keys["ArrowDown"]) dy += 1;
 
-  // Use Analog input if available (smoother 360 movement)
-  if (Math.abs(input.move.x) > 0.1 || Math.abs(input.move.y) > 0.1) {
-      dx = input.move.x;
-      dy = input.move.y;
-  }
+    if (Math.abs(input.move.x) > 0.1 || Math.abs(input.move.y) > 0.1) {
+        dx = input.move.x;
+        dy = input.move.y;
+    }
 
-  // Normalize if using keyboard (prevents faster diagonal speed)
-  if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (keys["ArrowLeft"] || keys["ArrowRight"])) {
-     const len = Math.hypot(dx, dy);
-     if (len > 0) { dx /= len; dy /= len; }
-  }
+    if ((keys["ArrowLeft"] || keys["ArrowRight"] || keys["ArrowUp"] || keys["ArrowDown"]) && (dx !== 0 || dy !== 0)) {
+       const len = Math.hypot(dx, dy);
+       if (len > 0) { dx /= len; dy /= len; }
+    }
 
-  if (dx !== 0 || dy !== 0) {
-    let nextX = player.x + dx * player.baseSpeed * speedMultiplier;
-    let nextY = player.y + dy * player.baseSpeed * speedMultiplier;
-    player.x = Math.max(0, Math.min(canvas.width - player.width, nextX));
-    player.y = Math.max(0, Math.min(canvas.height - player.height, nextY));
-  }
+    if (dx !== 0 || dy !== 0) {
+        let moveSpeed = (player.speed || 5); 
+        let nextX = player.x + dx * moveSpeed * speedMultiplier * timeScale;
+        let nextY = player.y + dy * moveSpeed * speedMultiplier * timeScale;
+        
+        player.x = Math.max(0, Math.min(worldWidth - player.width, nextX));
+        player.y = Math.max(0, Math.min(worldHeight - player.height, nextY));
+    }
 }
 
-// --- Utility ---
 export function resetPlayer(canvas) {
   player.x = canvas.width / 2 - player.width / 2;
   player.y = canvas.height - player.height - 20;
@@ -143,5 +207,9 @@ export function resetPlayer(canvas) {
   player.sprinting = false;
   player.dashCooldown = 0;
   player.dashTime = 0;
+  player.dashActive = false;
+  player.isDead = false;
+  player.deathTimer = 0; 
+  player.hurtTime = 0;
   updateStaminaBar();
 }

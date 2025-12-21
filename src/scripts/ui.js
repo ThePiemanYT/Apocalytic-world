@@ -2,6 +2,7 @@
 import { player, score, recalcPlayerStats, gameRunning, saveCosmetics } from "./state.js";
 import { cosmeticRegistry, isUnlocked, drawPlayer, drawPlayerIndicator, getBulletStyleDef } from "./cosmetics.js";
 import { playSound, setMusicVolume, setSFXVolume, toggleMusic, toggleSFX } from "./audio.js";
+import { totalCoins, buyCosmetic, hasCosmetic } from "./economy.js"; 
 
 // --- References ---
 const scoreDisplay = document.getElementById("score");
@@ -9,12 +10,12 @@ const healthBar = document.getElementById("healthBar");
 const healthBarContainer = document.getElementById("healthBarContainer");
 const waveDisplay = document.getElementById("waveDisplay");
 const ammoDisplay = document.getElementById("ammoDisplay") || document.createElement("div");
+// REMOVED: coinDisplay reference
 const staminaBar = document.getElementById("staminaBar") || document.createElement("div");
 const staminaFill = document.createElement("div");
 
 // --- Initialization ---
 export function initUI() {
-  // Setup Ammo
   if (!document.getElementById("ammoDisplay")) {
     ammoDisplay.id = "ammoDisplay";
     Object.assign(ammoDisplay.style, {
@@ -24,7 +25,8 @@ export function initUI() {
     document.body.appendChild(ammoDisplay);
   }
 
-  // Setup Stamina
+  // REMOVED: Coin Display creation
+
   if (!document.getElementById("staminaBar")) {
     staminaBar.id = "staminaBar";
     Object.assign(staminaBar.style, {
@@ -34,7 +36,6 @@ export function initUI() {
     document.body.appendChild(staminaBar);
   }
 
-  // --- Wardrobe Button (Top Right) ---
   if (!document.getElementById("wardrobeBtn")) {
       const btn = document.createElement("button");
       btn.id = "wardrobeBtn";
@@ -69,7 +70,6 @@ export function initUI() {
   setupSettingsListeners();
 }
 
-// --- Toggle Visibility ---
 export function toggleGameUI(visible) {
     const displayVal = visible ? "block" : "none";
     if (scoreDisplay) scoreDisplay.style.display = displayVal;
@@ -78,12 +78,12 @@ export function toggleGameUI(visible) {
     if (ammoDisplay) ammoDisplay.style.display = displayVal;
     if (staminaBar) staminaBar.style.display = displayVal;
     
-    // Hide Wardrobe button when game is running
+    // REMOVED: Coin display toggle logic
+
     const wBtn = document.getElementById("wardrobeBtn");
     if(wBtn) wBtn.style.display = visible ? "none" : "flex";
 }
 
-// --- Updates ---
 export function updateHUD() {
   const percent = Math.max(0, player.health) / player.maxHealth;
   if(healthBar) {
@@ -93,6 +93,8 @@ export function updateHUD() {
       else healthBar.style.background = "linear-gradient(90deg, #d32f2f, #ffe066)";
   }
   ammoDisplay.textContent = `Ammo: ${player.ammo} / ${player.reserveAmmo}`;
+  // REMOVED: Coin display update logic
+  
   staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
   if(scoreDisplay) scoreDisplay.textContent = "Score: " + score;
 }
@@ -100,7 +102,6 @@ export function updateWaveUI(currentWave) {
   if (waveDisplay) waveDisplay.textContent = "Wave: " + (currentWave + 1);
 }
 
-// --- Menus & Panels ---
 let panelStack = [];
 let helpData = null;
 let aboutData = null;
@@ -156,11 +157,9 @@ async function loadHelpData() {
   helpTabs.innerHTML = "";
   if(helpData) Object.keys(helpData).forEach(key => {
       const btn = document.createElement("button");
-      // FIX: Use Number/Key instead of Title for Tab Button
       btn.textContent = key; 
       btn.onclick = () => { 
           const txt = helpData[key].content.replace(/\n/g, "<br>");
-          // Title still shown inside content
           helpContent.innerHTML = `<h4 style="color:#ffd166">${helpData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; 
       };
       helpTabs.appendChild(btn);
@@ -180,7 +179,6 @@ async function loadAboutData() {
     aboutTabs.innerHTML = "";
     if(aboutData) Object.keys(aboutData).forEach(key => {
         const btn = document.createElement("button");
-        // FIX: Use Number/Key instead of Title for Tab Button
         btn.textContent = key;
         btn.onclick = () => { 
             const txt = aboutData[key].content ? aboutData[key].content.replace(/\n/g, "<br>") : ""; 
@@ -192,7 +190,6 @@ async function loadAboutData() {
     if (aboutData && Object.keys(aboutData)[0]) aboutTabs.firstChild.click();
 }
 
-// --- UPGRADE SCREEN ---
 export function openUpgradeScreen(onComplete) {
   const upgradeKeys = [
     { key: "damage", label: "Damage" }, 
@@ -244,7 +241,6 @@ export function openUpgradeScreen(onComplete) {
           
           const lvl = player.upgrades[u.key] || 0;
           
-          // Reverted to Visual Blocks (Pips) based on context
           let blocksHTML = "<div style='display:flex;gap:4px;'>";
           for(let i=0; i<maxPerUpgrade; i++) {
               const color = i < lvl ? "#ffd166" : "rgba(255,255,255,0.1)";
@@ -298,8 +294,13 @@ export function openUpgradeScreen(onComplete) {
 
 // --- WARDROBE UI ---
 let previewInterval = null;
+let previewState = {}; // FIXED: Tracks what is visually selected
+
 export function openWardrobe() {
     let modal = document.getElementById("wardrobeModal");
+    // Initialize preview state with current player cosmetics
+    previewState = { ...player.cosmetics };
+
     if (!modal) {
         modal = document.createElement("div");
         modal.id = "wardrobeModal";
@@ -315,21 +316,37 @@ export function openWardrobe() {
                 <small style="color:#aaa; font-size:10px;">Move & Aim to Test</small>
             </div>
             <div style="display:flex; flex-direction:column; width: 450px; max-width:90%;">
-                <h2 style="color: #ffe066; margin-bottom: 20px; text-align:center;">WARDROBE</h2>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h2 style="color: #ffe066; margin:0;">WARDROBE</h2>
+                    <div id="wardrobeCoins" style="color:gold; font-size:14px;">Coins: 0</div>
+                </div>
                 <div id="wardrobeGrid" style="display: flex; flex-direction:column; gap: 12px;"></div>
                 <button id="closeWardrobeBtn" style="margin-top: 25px; padding: 15px; background:#4CAF50; border:none; color:white; cursor:pointer;">Save & Close</button>
             </div>
         `;
         document.body.appendChild(modal);
+        
         document.getElementById("closeWardrobeBtn").onclick = () => {
             modal.style.display = "none";
             document.getElementById("menu").style.display = "flex";
             const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex";
             if(previewInterval) { clearInterval(previewInterval); previewInterval = null; }
-            saveCosmetics(); playSound("select");
+            
+            // --- CRITICAL FIX: EXPLICITLY SAVE TO LOCALSTORAGE ---
+            localStorage.setItem("equippedBodyColor", player.cosmetics.bodyColor);
+            localStorage.setItem("equippedHatStyle", player.cosmetics.hatStyle);
+            localStorage.setItem("equippedEyeStyle", player.cosmetics.eyeStyle);
+            localStorage.setItem("equippedIndicatorStyle", player.cosmetics.indicatorStyle);
+            localStorage.setItem("equippedBulletStyle", player.cosmetics.bulletStyle);
+            
+            saveCosmetics(); 
+            playSound("select");
+            
+            // Only wardrobeCoins is updated here
         };
     }
     
+    document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`;
     document.getElementById("menu").style.display = "none";
     const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none";
     const grid = document.getElementById("wardrobeGrid"); grid.innerHTML = ""; 
@@ -347,7 +364,12 @@ export function openWardrobe() {
         Object.assign(row.style, { display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.1)", padding: "12px", borderRadius: "8px" });
         const label = document.createElement("div"); label.textContent = cat.label; label.style.color = "cyan"; label.style.fontSize = "12px";
         const controls = document.createElement("div"); Object.assign(controls.style, { display: "flex", gap: "10px", alignItems: "center" });
-        const disp = document.createElement("div"); disp.style.width = "140px"; disp.style.textAlign = "center"; disp.textContent = "..."; disp.style.fontSize = "12px";
+        
+        const dispBtn = document.createElement("button"); 
+        Object.assign(dispBtn.style, { 
+            width: "140px", textAlign: "center", fontSize: "12px", background:"transparent", border:"none", cursor:"default" 
+        });
+
         const prev = document.createElement("button"); prev.textContent = "<"; const next = document.createElement("button"); next.textContent = ">";
         [prev, next].forEach(b => { b.style.cursor="pointer"; b.style.padding="5px 10px"; b.style.background="#444"; b.style.color="white"; b.style.border="none"; });
         
@@ -359,20 +381,51 @@ export function openWardrobe() {
         const update = () => {
             if(!items.length) return;
             const item = items[idx];
-            const un = isUnlocked(item);
-            if(un) {
-                disp.textContent = item.name; disp.style.color = "white"; player.cosmetics[cat.stateKey] = item.id;
+            
+            // --- FIX: UPDATE PREVIEW STATE INSTANTLY ---
+            previewState[cat.stateKey] = item.id; 
+
+            const unlocked = isUnlocked(item); 
+            const owned = hasCosmetic(item.id); 
+
+            dispBtn.onclick = null; 
+
+            if (unlocked) {
+                if (owned) {
+                    dispBtn.textContent = item.name;
+                    dispBtn.style.color = "white";
+                    dispBtn.style.cursor = "default";
+                    player.cosmetics[cat.stateKey] = item.id;
+                } else if (item.type === "buyable") {
+                    dispBtn.textContent = `Buy: ${item.price}`;
+                    const affordable = totalCoins >= item.price;
+                    dispBtn.style.color = affordable ? "#ffd700" : "#d32f2f";
+                    dispBtn.style.cursor = "pointer";
+                    
+                    dispBtn.onclick = () => {
+                        if (buyCosmetic(item.id)) {
+                            playSound("powerUp"); 
+                            document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`;
+                            update(); 
+                        } else {
+                            playSound("hitHurt"); 
+                        }
+                    };
+                }
             } else {
-                disp.textContent = "Locked"; disp.style.color = "#888";
+                dispBtn.textContent = "Locked"; 
+                dispBtn.style.color = "#888";
+                dispBtn.style.cursor = "default";
             }
+
             let hint = row.querySelector(".hint-tooltip");
             if(!hint) { hint = document.createElement("div"); hint.className = "hint-tooltip"; Object.assign(hint.style, { position:"absolute", right:"20px", fontSize:"10px", color:"#ff5252", marginTop:"35px" }); row.appendChild(hint); }
-            hint.textContent = un ? "" : `Req: ${item.hint || "Unknown"}`;
+            hint.textContent = unlocked ? "" : `Req: ${item.hint || "Unknown"}`;
         };
         update();
         prev.onclick = () => { idx = (idx - 1 + items.length) % items.length; update(); playSound("select"); };
         next.onclick = () => { idx = (idx + 1) % items.length; update(); playSound("select"); };
-        controls.append(prev, disp, next); row.append(label, controls); grid.append(row);
+        controls.append(prev, dispBtn, next); row.append(label, controls); grid.append(row);
     });
 
     modal.style.display = "flex";
@@ -390,7 +443,8 @@ function startPreview() {
         pCtx.save();
         pCtx.translate(w/2, h/2); pCtx.scale(ZOOM, ZOOM);
         
-        const mockPlayer = { ...player, x: -16, y: -16, width: 32, height: 32 };
+        // --- FIX: USE PREVIEW STATE FOR DRAWING ---
+        const mockPlayer = { ...player, cosmetics: { ...previewState }, x: -16, y: -16, width: 32, height: 32 };
         const mockCam = { x: 0, y: 0 };
         const aim = { x: Math.cos(t) * 60, y: Math.sin(t) * 60, isVector: true };
         const move = { x: Math.sin(t * 2) * 0.5, y: Math.cos(t) * 0.2 }; 
@@ -399,7 +453,7 @@ function startPreview() {
         drawPlayer(pCtx, mockPlayer, aim, move, mockCam);
         drawPlayerIndicator(pCtx, mockPlayer, aim, mockCam);
         
-        const bStyle = getBulletStyleDef(player.cosmetics.bulletStyle);
+        const bStyle = getBulletStyleDef(previewState.bulletStyle || player.cosmetics.bulletStyle);
         const bx = 30, by = 0;
         if(bStyle.type === "gradient") {
             const grad = pCtx.createLinearGradient(bx - 4, by - 4, bx + 4, by + 4);

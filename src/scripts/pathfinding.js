@@ -32,24 +32,35 @@ export function initPathfinding() {
 }
 
 export function updatePathfinding(playerX, playerY) {
+    // If grid is not initialized yet, stop to prevent crash
+    if (!grid || grid.length === 0) return;
+
     for (let i = 0; i < grid.length; i++) grid[i].distance = 65535;
 
     const pCol = Math.floor(Math.max(0, Math.min(worldWidth - 1, playerX)) / CELL_SIZE);
     const pRow = Math.floor(Math.max(0, Math.min(worldHeight - 1, playerY)) / CELL_SIZE);
     
     if (pCol < 0 || pCol >= COLS || pRow < 0 || pRow >= ROWS) return;
+    
     const startIndex = pRow * COLS + pCol;
     
-    if (grid[startIndex]) {
-        grid[startIndex].blocked = false; // Always let enemies enter player's cell
-        grid[startIndex].distance = 0;
-    }
+    // --- FIX START: Check if cell exists before adding to queue ---
+    if (!grid[startIndex]) return; 
+
+    grid[startIndex].blocked = false; // Always let enemies enter player's cell
+    grid[startIndex].distance = 0;
 
     const queue = [startIndex];
+    // --- FIX END ---
+
     const neighbors = [-COLS, COLS, -1, 1]; 
 
     while (queue.length > 0) {
         const currentId = queue.shift();
+        
+        // Safety check inside loop (though the initial check fixes the main crash)
+        if (!grid[currentId]) continue;
+
         const currentDist = grid[currentId].distance;
 
         for (let offset of neighbors) {
@@ -59,7 +70,7 @@ export function updatePathfinding(playerX, playerY) {
             if (nextId < 0 || nextId >= grid.length) continue;
 
             const cell = grid[nextId];
-            if (cell.blocked) continue;
+            if (!cell || cell.blocked) continue; // Added !cell check
 
             if (cell.distance === 65535) {
                 cell.distance = currentDist + 1;
@@ -73,10 +84,11 @@ export function updatePathfinding(playerX, playerY) {
         let bestDist = grid[i].distance;
         let vx = 0, vy = 0;
 
-        if (i % COLS > 0 && grid[i-1].distance < bestDist) { vx = -1; bestDist = grid[i-1].distance; }
-        if (i % COLS < COLS - 1 && grid[i+1].distance < bestDist) { vx = 1; bestDist = grid[i+1].distance; }
-        if (i >= COLS && grid[i-COLS].distance < bestDist) { vy = -1; bestDist = grid[i-COLS].distance; }
-        if (i < grid.length - COLS && grid[i+COLS].distance < bestDist) { vy = 1; }
+        // Boundary checks added to neighbor access to prevent wrap-around errors
+        if (i % COLS > 0 && grid[i-1] && grid[i-1].distance < bestDist) { vx = -1; bestDist = grid[i-1].distance; }
+        if (i % COLS < COLS - 1 && grid[i+1] && grid[i+1].distance < bestDist) { vx = 1; bestDist = grid[i+1].distance; }
+        if (i >= COLS && grid[i-COLS] && grid[i-COLS].distance < bestDist) { vy = -1; bestDist = grid[i-COLS].distance; }
+        if (i < grid.length - COLS && grid[i+COLS] && grid[i+COLS].distance < bestDist) { vy = 1; }
 
         const len = Math.hypot(vx, vy);
         if (len > 0) { grid[i].vx = vx / len; grid[i].vy = vy / len; }
@@ -84,9 +96,14 @@ export function updatePathfinding(playerX, playerY) {
 }
 
 export function getFlowDirection(x, y) {
+    // Safety check for empty grid
+    if (!grid || grid.length === 0) return { x: 0, y: 0 };
+
     const col = Math.floor(x / CELL_SIZE);
     const row = Math.floor(y / CELL_SIZE);
+    
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return { x: 0, y: 0 }; 
+    
     const cell = grid[row * COLS + col];
     if (!cell || cell.blocked) {
         // Fallback: Nudge towards center if stuck inside wall buffer

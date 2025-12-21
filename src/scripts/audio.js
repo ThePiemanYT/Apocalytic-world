@@ -6,17 +6,28 @@ export const backgroundMusic = document.getElementById("backgroundMusic");
 export const sounds = {
   select: new Audio("src/assets/sound/blipSelect.wav"),
   explosion: new Audio("src/assets/sound/explosion.wav"),
-  shoot: new Audio("src/assets/sound/laserShoot.wav"),
   hitHurt: new Audio("src/assets/sound/hitHurt.wav"),
   powerUp: new Audio("src/assets/sound/powerUp.wav"),
-  
-  // --- NEW SOUNDS ---
   powerProcess: new Audio("src/assets/sound/powerUp_process.wav"), 
-  dash: new Audio("src/assets/sound/Dash.wav"),                   
-  
-  reload: new Audio("src/assets/sound/reload-gun.mp3"),
   victory: new Audio("src/assets/sound/victory.mp3"),
-  gameOver: new Audio("src/assets/sound/game-over.mp3")
+  gameOver: new Audio("src/assets/sound/game-over.mp3"),
+
+  // --- FIX 1: SHOOT ALIASES ---
+  // player.js asks for "laserShoot", but we also keep "shoot" just in case
+  shoot: new Audio("src/assets/sound/laserShoot.wav"),
+  laserShoot: new Audio("src/assets/sound/laserShoot.wav"),
+
+  // --- FIX 2: DASH ALIASES ---
+  // player.js asks for "Dash" (Capital), but we keep "dash" (lower) too
+  dash: new Audio("src/assets/sound/Dash.wav"),
+  Dash: new Audio("src/assets/sound/Dash.wav"),   
+  playerDeath: new Audio("src/assets/sound/PlayerDeath.wav"),                
+  
+  // --- FIX 3: RELOAD ALIASES ---
+  // player.js asks for "reload-gun", we keep "reload" too
+  reload: new Audio("src/assets/sound/reload-gun.mp3"),
+  "reload-gun": new Audio("src/assets/sound/reload-gun.mp3"),
+  "game-over": new Audio("src/assets/sound/victory.mp3"),
 };
 
 // Debug: Log if sounds fail to load
@@ -41,7 +52,9 @@ if (localStorage.getItem("musicVolume")) musicVolume = parseFloat(localStorage.g
 if (localStorage.getItem("sfxVolume")) sfxVolume = parseFloat(localStorage.getItem("sfxVolume"));
 
 // Apply initial volumes
-backgroundMusic.volume = musicVolume;
+if (backgroundMusic) {
+    backgroundMusic.volume = musicVolume;
+}
 Object.values(sounds).forEach(s => s.volume = sfxVolume);
 
 // --- Throttling System ---
@@ -49,8 +62,10 @@ const soundLastPlayed = {};
 
 export function playSound(name, throttleMs = 0) {
   if (!sfxEnabled) return;
+  
+  // Safety check: if sound doesn't exist, warn and exit (don't crash)
   if (!sounds[name]) {
-      console.warn(`playSound: Sound '${name}' not found in registry.`);
+      console.warn(`playSound: Sound '${name}' not found in registry. check audio.js`);
       return;
   }
   
@@ -61,17 +76,17 @@ export function playSound(name, throttleMs = 0) {
     soundLastPlayed[name] = now;
   }
 
-  // Debug Log for Dash
-  if (name === "dash") console.log("🔊 playSound('dash') Triggered!");
-
   // Attempt play
   try {
+      // Clone the node so we can play overlapping sounds (rapid fire)
       const soundClone = sounds[name].cloneNode();
       soundClone.volume = sfxVolume;
+      
       const playPromise = soundClone.play();
       if (playPromise !== undefined) {
           playPromise.catch(error => {
-              console.warn(`Audio Play Error for '${name}':`, error);
+              // Auto-play policy or missing file errors usually caught here
+              // console.warn(`Audio Play Error for '${name}':`, error);
           });
       }
   } catch(e) {
@@ -82,6 +97,8 @@ export function playSound(name, throttleMs = 0) {
 export function toggleMusic(enabled) {
   musicEnabled = enabled;
   localStorage.setItem("musicEnabled", enabled);
+  if (!backgroundMusic) return;
+  
   if (!musicEnabled) backgroundMusic.pause();
   else backgroundMusic.play().catch(() => {});
 }
@@ -93,7 +110,7 @@ export function toggleSFX(enabled) {
 
 export function setMusicVolume(val) {
   musicVolume = val;
-  backgroundMusic.volume = musicVolume;
+  if (backgroundMusic) backgroundMusic.volume = musicVolume;
   localStorage.setItem("musicVolume", musicVolume);
 }
 

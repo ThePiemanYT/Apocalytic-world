@@ -5,7 +5,7 @@ import { playSound } from "./audio.js";
 
 export let activePowerups = [];
 export let powerups = [];
-let powerupRoulettes = [];
+export let powerupRoulettes = []; // Queue system
 
 // --- HUD Container ---
 let powerupHUD = null;
@@ -288,57 +288,104 @@ function drawActiveBuffs(ctx, playerRef, camera, time) {
         ctx.shadowBlur = 0;
     }
 
+    // --- NEW: PRECISION HUNTER EFFECT (Replacing Old Squares) ---
     if (activePowerups.some(p => p.type === "Critical")) {
-        if (Math.random() > 0.7) {
-            ctx.fillStyle = "rgba(255, 23, 68, 0.5)";
-            const offX = (Math.random() - 0.5) * 40;
-            const offY = (Math.random() - 0.5) * 40;
-            ctx.fillRect(cx + offX - 2, cy + offY - 2, 4, 4);
-        }
+        ctx.save();
+        ctx.translate(cx, cy);
+        
+        // Rotating Tactical Ring
+        const angle = time / 300;
+        ctx.rotate(angle);
+        ctx.strokeStyle = "#ff1744"; // Neon Red
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#ff1744";
+        ctx.shadowBlur = 12; // Glow effect
+        
+        // Dashed Target Circle
+        ctx.setLineDash([10, 15]); 
+        ctx.beginPath();
+        const r = 50 + Math.sin(time / 100) * 5; // Pulsing
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Inner Crosshairs
+        ctx.setLineDash([]); // Solid lines
+        ctx.beginPath();
+        const len = 10;
+        // North
+        ctx.moveTo(0, -r); ctx.lineTo(0, -r + len);
+        // South
+        ctx.moveTo(0, r); ctx.lineTo(0, r - len);
+        // West
+        ctx.moveTo(-r, 0); ctx.lineTo(-r + len, 0);
+        // East
+        ctx.moveTo(r, 0); ctx.lineTo(r - len, 0);
+        ctx.stroke();
+
+        ctx.restore();
     }
 
     if (activePowerups.some(p => p.type === "Immune")) {
-        drawNormalShield(ctx, cx, cy, playerRef, time);
+        drawImmunityShield(ctx, playerRef, camera); 
     }
 }
 
-function drawNormalShield(ctx, cx, cy, playerRef, time) {
+export function drawImmunityShield(ctx, playerRef, camera) {
+    const cx = playerRef.x + playerRef.width / 2 - camera.x;
+    const cy = playerRef.y + playerRef.height / 2 - camera.y;
+    const time = performance.now();
+    
     const pulse = Math.sin(time / 200) * 0.05 + 1.1; 
     const size = (playerRef.width * 1.3) * pulse;
 
     ctx.save();
     ctx.translate(cx, cy);
+    
     ctx.rotate(time / 500); 
-    ctx.shadowColor = "rgba(0, 229, 255, 0.8)"; ctx.shadowBlur = 15;
-    ctx.strokeStyle = "rgba(0, 229, 255, 0.8)"; ctx.lineWidth = 3;
+    
+    ctx.shadowColor = "rgba(0, 229, 255, 0.9)"; 
+    ctx.shadowBlur = 20;
+    ctx.strokeStyle = "rgba(200, 255, 255, 0.9)"; 
+    ctx.lineWidth = 3;
     ctx.strokeRect(-size/2, -size/2, size, size);
+    
+    ctx.fillStyle = "rgba(0, 229, 255, 0.1)";
+    ctx.fillRect(-size/2, -size/2, size, size);
+    
     ctx.rotate(time / -250); 
-    ctx.strokeStyle = "rgba(0, 229, 255, 0.4)"; ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = "rgba(0, 229, 255, 0.5)"; 
+    ctx.lineWidth = 2;
     ctx.strokeRect(-(size*0.7)/2, -(size*0.7)/2, size*0.7, size*0.7);
+    
     ctx.shadowBlur = 0;
     ctx.restore();
 }
 
-// --- SLOT MACHINE ---
+// --- QUEUE SYSTEM / SLOT MACHINE ---
 function startRoulette(playerRef) {
-    playSound("powerProcess"); // <--- PLAY NEW SOUND HERE
+    playSound("powerProcess"); 
+    
+    const queueIndex = powerupRoulettes.length;
     
     powerupRoulettes.push({
-        timer: 135, // 2.25s duration @ 60fps matches your sound
+        timer: 135, 
         x: playerRef.x,
-        y: playerRef.y - 40,
+        y: playerRef.y - 40 - (queueIndex * 25), 
         text: "?",
         color: "#fff",
         finalType: null, 
-        done: false
+        done: false,
+        offsetY: queueIndex * 25 
     });
 }
 
 function updateAndDrawRoulettes(ctx, playerRef, camera, updateAmmo, updateHP, sfxEnabled, powerUpSound, onPick) {
     for (let i = powerupRoulettes.length - 1; i >= 0; i--) {
         let r = powerupRoulettes[i];
+        
         r.x = playerRef.x + playerRef.width / 2;
-        r.y = playerRef.y - 40;
+        r.y = playerRef.y - 40 - r.offsetY;
 
         if (r.timer > 0) {
             r.timer--;
@@ -351,31 +398,51 @@ function updateAndDrawRoulettes(ctx, playerRef, camera, updateAmmo, updateHP, sf
                 r.text = randomPick.label;
                 r.color = randomPick.color;
             }
-            ctx.save(); ctx.fillStyle = r.color; ctx.font = "14px 'Press Start 2P'"; ctx.shadowColor = "black"; ctx.shadowBlur = 4; ctx.textAlign = "center"; ctx.fillText(r.text, r.x - camera.x, r.y - camera.y); ctx.restore();
+            ctx.save(); 
+            ctx.fillStyle = r.color; 
+            ctx.font = "14px 'Press Start 2P'"; 
+            ctx.shadowColor = "black"; 
+            ctx.shadowBlur = 4; 
+            ctx.textAlign = "center"; 
+            ctx.fillText(r.text, r.x - camera.x, r.y - camera.y); 
+            ctx.restore();
         } else {
             if (!r.done) {
                 const result = powerupTypes[Math.floor(Math.random() * powerupTypes.length)];
                 r.finalType = result; r.text = result.label; r.color = result.color;
+                
                 result.effect(playerRef, updateAmmo, null, updateHP);
+                
                 if (onPick) onPick(result.label);
                 
-                // Play success sound (standard powerUp)
                 if (sfxEnabled && powerUpSound) { 
                     powerUpSound.currentTime = 0; 
                     powerUpSound.play().catch(()=>{}); 
                 }
                 
-                r.done = true; r.floatTimer = 40; 
+                r.done = true; 
+                r.floatTimer = 40; 
             }
+            
             r.floatTimer--;
             r.y -= (40 - r.floatTimer) * 0.1;
-            ctx.save(); ctx.globalAlpha = r.floatTimer / 40; ctx.fillStyle = r.color; ctx.font = "20px 'Press Start 2P'"; ctx.shadowColor = r.color; ctx.shadowBlur = 10; ctx.textAlign = "center"; ctx.fillText(r.text + "!", r.x - camera.x, r.y - camera.y); ctx.restore();
+            
+            ctx.save(); 
+            ctx.globalAlpha = r.floatTimer / 40; 
+            ctx.fillStyle = r.color; 
+            ctx.font = "20px 'Press Start 2P'"; 
+            ctx.shadowColor = r.color; 
+            ctx.shadowBlur = 10; 
+            ctx.textAlign = "center"; 
+            ctx.fillText(r.text + "!", r.x - camera.x, r.y - camera.y); 
+            ctx.restore();
+            
             if (r.floatTimer <= 0) powerupRoulettes.splice(i, 1);
         }
     }
 }
 
-// --- VISUALS: CRATE ---
+// --- VISUALS: CRATE (Original Wood) ---
 function drawMysteryCrate(ctx, p, camera, time) {
     const cx = p.x - camera.x;
     const cy = p.y - camera.y;
@@ -383,16 +450,51 @@ function drawMysteryCrate(ctx, p, camera, time) {
     const bob = Math.sin((time / 200) + p.animOffset) * 3;
     const drawY = cy + bob;
 
-    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.beginPath(); ctx.ellipse(cx + size/2, drawY + size + 5, size/1.5, size/4, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = "#3e2723"; ctx.fillRect(cx, drawY, size, size);
-    ctx.fillStyle = "#1b0000"; ctx.beginPath(); ctx.moveTo(cx + size, drawY); ctx.lineTo(cx + size + 5, drawY - 5); ctx.lineTo(cx + size + 5, drawY + size - 5); ctx.lineTo(cx + size, drawY + size); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#5d4037"; ctx.beginPath(); ctx.moveTo(cx, drawY); ctx.lineTo(cx + 5, drawY - 5); ctx.lineTo(cx + size + 5, drawY - 5); ctx.lineTo(cx + size, drawY); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#8d6e63"; const b = 4; ctx.fillRect(cx, drawY, size, b); ctx.fillRect(cx, drawY + size - b, size, b); ctx.fillRect(cx, drawY, b, size); ctx.fillRect(cx + size - b, drawY, b, size);
-    ctx.fillStyle = "#ffe066"; ctx.shadowColor = "#ffb300"; ctx.shadowBlur = 10; ctx.font = "bold 16px 'Press Start 2P'"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("?", cx + size/2 + 2, drawY + size/2); ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(0,0,0,0.4)"; 
+    ctx.beginPath(); 
+    ctx.ellipse(cx + size/2, drawY + size + 5, size/1.5, size/4, 0, 0, Math.PI*2); 
+    ctx.fill();
+
+    ctx.fillStyle = "#3e2723"; 
+    ctx.fillRect(cx, drawY, size, size);
+
+    ctx.fillStyle = "#1b0000"; 
+    ctx.beginPath(); 
+    ctx.moveTo(cx + size, drawY); 
+    ctx.lineTo(cx + size + 5, drawY - 5); 
+    ctx.lineTo(cx + size + 5, drawY + size - 5); 
+    ctx.lineTo(cx + size, drawY + size); 
+    ctx.closePath(); 
+    ctx.fill();
+
+    ctx.fillStyle = "#5d4037"; 
+    ctx.beginPath(); 
+    ctx.moveTo(cx, drawY); 
+    ctx.lineTo(cx + 5, drawY - 5); 
+    ctx.lineTo(cx + size + 5, drawY - 5); 
+    ctx.lineTo(cx + size, drawY); 
+    ctx.closePath(); 
+    ctx.fill();
+
+    ctx.fillStyle = "#8d6e63"; 
+    const b = 4; 
+    ctx.fillRect(cx, drawY, size, b); 
+    ctx.fillRect(cx, drawY + size - b, size, b); 
+    ctx.fillRect(cx, drawY, b, size); 
+    ctx.fillRect(cx + size - b, drawY, b, size);
+
+    ctx.fillStyle = "#ffe066"; 
+    ctx.shadowColor = "#ffb300"; 
+    ctx.shadowBlur = 10; 
+    ctx.font = "bold 16px 'Press Start 2P'"; 
+    ctx.textAlign = "center"; 
+    ctx.textBaseline = "middle"; 
+    ctx.fillText("?", cx + size/2 + 2, drawY + size/2); 
+    ctx.shadowBlur = 0;
 }
 
-// --- VISUALS: TRACKER ---
-function drawEdgeTracker(ctx, player, target, camera, time) {
+// --- VISUALS: TRACKER (Off-screen arrow) ---
+function drawEdgeTracker(ctx, playerRef, target, camera, time) {
     const t = ctx.getTransform();
     const zoom = t.a; 
     const logicalW = ctx.canvas.width / zoom;
@@ -423,7 +525,9 @@ function drawEdgeTracker(ctx, player, target, camera, time) {
     ctx.translate(arrowX, arrowY);
     ctx.rotate(angle);
     ctx.scale(pulse, pulse);
-    ctx.fillStyle = "#ffe066"; ctx.shadowColor = "black"; ctx.shadowBlur = 4; ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+    ctx.fillStyle = "#ffe066"; 
+    ctx.shadowColor = "black"; ctx.shadowBlur = 4; 
+    ctx.strokeStyle = "black"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-10, 10); ctx.lineTo(-10, -10); ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.restore();

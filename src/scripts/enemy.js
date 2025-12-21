@@ -8,6 +8,9 @@ import { camera } from "./camera.js";
 import { resolveMapCollision, checkCollision } from "./map.js"; 
 import { getFlowDirection } from "./pathfinding.js"; 
 
+// --- 1. NEW IMPORT: Connect to Player Logic ---
+import { takeDamage } from "./player.js";
+
 export let enemies = [];
 const enemyPool = [];
 export let projectiles = [];
@@ -45,41 +48,30 @@ export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
   enemies.push(enemy);
 }
 
-// --- EXPLOSION LOGIC (Updated) ---
+// --- EXPLOSION LOGIC ---
 export function triggerExplosion(x, y, baseDamage, effects) {
     const blastRadius = 100;
-    
-    // Calculate Explosion Damage: 30% of base damage, minimum 1
     const explosionDmg = Math.max(1, Math.ceil(baseDamage * 0.3));
 
-    // 1. Visual Effect (Layered for Depth)
     if (effects && effects.spawnExplosion) {
-        // Outer Dark Orange
         effects.spawnExplosion(x, y, blastRadius, "rgba(255, 69, 0, 0.4)"); 
-        // Middle Orange
         effects.spawnExplosion(x, y, blastRadius * 0.7, "rgba(255, 165, 0, 0.6)");
-        // Inner White Core
         effects.spawnExplosion(x, y, blastRadius * 0.35, "rgba(255, 255, 255, 0.9)");
     }
 
-    // 2. Text Effect
     if (effects && effects.spawnText) {
         effects.spawnText(x, y, "BOOM!", "#ff6d00", 16);
     }
     
-    // 3. Screen Shake
     if (effects && effects.shake) {
         effects.shake(4);
     }
 
-    // 4. Area Damage (Uses explosionDmg, no crits)
     enemies.forEach(other => {
         const d = Math.hypot(other.x + other.width/2 - x, other.y + other.height/2 - y);
         if (d < blastRadius) {
             other.health -= explosionDmg;
             other.hitFlash = 5;
-            
-            // Optional: Show damage number for explosion
             if (effects && effects.spawnText) {
                 effects.spawnText(other.x + other.width/2, other.y, `-${explosionDmg}`, "#ffcc80", 10);
             }
@@ -183,7 +175,6 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
       let b = bullets[j];
       if (!b.active) continue;
 
-      // Handle Piercing: Check if this bullet already hit this enemy
       if (player.piercingShot && b.hitList && b.hitList.includes(e)) continue;
 
       if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
@@ -191,7 +182,6 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
         let hitDmg = baseDmg;
         let isCrit = false;
 
-        // Crit Logic: Only affects hitDmg, NOT baseDmg
         if (player.alwaysCrit || Math.random() < player.critChance) { 
             isCrit = true; 
             hitDmg *= player.critMultiplier; 
@@ -202,21 +192,17 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
         e.hitFlash = 10;
         enemyHit = true;
 
-        // EXPLOSION LOGIC: Uses baseDmg (No Crit), 30% calculation is inside triggerExplosion
         if (player.explosiveShot) {
             triggerExplosion(e.x + e.width/2, e.y + e.height/2, baseDmg, effects);
         }
 
-        // PIERCING LOGIC
         if (player.piercingShot) {
             if (!b.hitList) b.hitList = [];
             b.hitList.push(e);
-            // Don't destroy bullet
         } else {
             b.active = false; 
         }
         
-        // Knockback
         const knockback = 5; 
         let kdx = b.dx || 0, kdy = b.dy || 0;
         if(kdx===0 && kdy===0) { kdx=1; }
@@ -232,7 +218,6 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
         }
         if (isCrit && effects && effects.shake) { effects.shake(3); }
         
-        // Break loop if not piercing (bullet dead)
         if (!player.piercingShot) break; 
       }
     }
@@ -253,32 +238,43 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
   }
 }
 
-// ... (Rest of enemy.js: handlePlayerCollisions, etc. - unchanged) ...
+// --- FIX 2: UPDATE PLAYER COLLISIONS TO USE takeDamage() ---
 export function handlePlayerCollisions(player, updateHealthBar, endGame) {
   const now = Date.now();
   for (let e of enemies) {
     if (player.x < e.x + e.width && player.x + player.width > e.x && player.y < e.y + e.height && player.y + player.height > e.y) {
       if (player.immune) continue;
       if (now - player.lastHitTime >= 1000) {
-        player.health -= 1;
+        
+        // OLD CODE: player.health -= 1;
+        // NEW CODE: Triggers sound, hurt timer, and red flash
+        takeDamage(1);
+        
         player.lastHitTime = now;
-        updateHealthBar();
-        if (player.health <= 0) { endGame(); return true; }
+        
+        // Check if player died (takeDamage sets the isDead flag)
+        if (player.isDead) { endGame(); return true; }
       }
     }
   }
   return false;
 }
 
+// --- FIX 3: UPDATE PROJECTILE COLLISIONS TO USE takeDamage() ---
 export function handleProjectilePlayerCollision(player, updateHealthBar, endGame) {
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i];
     if (player.x < p.x + p.width && player.x + player.width > p.x && player.y < p.y + p.height && player.y + player.height > p.y) {
       if (player.immune) { projectiles.splice(i, 1); continue; }
-      player.health -= (p.from === "sniper" ? 2 : 1);
-      updateHealthBar();
+      
+      const dmg = (p.from === "sniper" ? 2 : 1);
+      
+      // OLD CODE: player.health -= dmg;
+      // NEW CODE:
+      takeDamage(dmg);
+      
       projectiles.splice(i, 1);
-      if (player.health <= 0) { endGame(); return true; }
+      if (player.isDead) { endGame(); return true; }
     }
   }
   return false;

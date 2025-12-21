@@ -1,6 +1,6 @@
 /* src/scripts/waves.js */
 import { canvas, player } from "./state.js";
-import { spawnEnemy, enemies } from "./enemy.js"; // Import existing logic
+import { spawnEnemy, enemies } from "./enemy.js"; 
 import { spawnPowerups } from "./powerup.js";
 import { updateAchievement } from "./achievement.js";
 import { updateWaveUI } from "./ui.js";
@@ -33,22 +33,32 @@ export async function loadGameData() {
 }
 
 export function startWave(waveIdx) {
-  if (!waves[waveIdx]) return false; // No more waves
+  // FIX: If no more waves, return false to trigger Victory in index.js
+  if (!waves[waveIdx]) {
+      return false; 
+  }
+  
+  let waveData = waves[waveIdx];
   
   currentWave = waveIdx;
   updateWaveUI(currentWave);
   
+  // Every 5 waves (5, 10, 15...), give ammo
+  if ((waveIdx + 1) % 5 === 0) {
+      const reinforcementAmount = 300;
+      player.reserveAmmo += reinforcementAmount;
+  }
+
   waveEnemyQueue = [];
   // Build queue
-  for (const z of waves[waveIdx].zombies) {
+  for (const z of waveData.zombies) {
     for (let i = 0; i < z.count; i++) waveEnemyQueue.push(z.type);
   }
   
   waveSpawning = true;
   waveSpawnTimer = 0;
-  spawnPowerups(); // Spawn powerups at start of wave
+  spawnPowerups(); 
   
-  // Achievement
   if (waveIdx === 7) updateAchievement("4", 8);
 
   return true;
@@ -57,7 +67,7 @@ export function startWave(waveIdx) {
 export function updateWaveLogic() {
   if (waveSpawning) {
     waveSpawnTimer++;
-    if (waveSpawnTimer >= 40) { // Spawn every 40 frames
+    if (waveSpawnTimer >= 40) { 
       if (waveEnemyQueue.length > 0) {
         const type = waveEnemyQueue.shift();
         spawnEnemy(type, zombiesData, canvas.width);
