@@ -11,6 +11,7 @@ export const sounds = {
   powerProcess: new Audio("src/assets/sound/powerUp_process.wav"), 
   victory: new Audio("src/assets/sound/victory.mp3"),
   gameOver: new Audio("src/assets/sound/game-over.mp3"),
+  explosionPowerup: new Audio("src/assets/sound/explosionPower.wav"),
 
   // --- FIX 1: SHOOT ALIASES ---
   // player.js asks for "laserShoot", but we also keep "shoot" just in case

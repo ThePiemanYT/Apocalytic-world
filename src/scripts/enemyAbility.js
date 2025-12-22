@@ -1,5 +1,4 @@
 /* src/scripts/enemyAbility.js */
-// Handles special abilities for enemies (e.g., summoner, linker, sniper)
 
 export function handleSummonerAbility(enemies, zombiesData, canvas) {
   if (!handleSummonerAbility.summonerTimers) {
@@ -55,9 +54,9 @@ export function handleJuggernautAbility(enemies, zombiesData, player) {
   }
 }
 
-export function handleSpitterDeathSplit(enemy, enemies, zombiesData, canvasWidth) {
-  if (enemy.type === "Spitter") {
-    const zData = zombiesData["Spitter1"];
+export function handleSplitterDeathSplit(enemy, enemies, zombiesData, canvasWidth) {
+  if (enemy.type === "Splitter") {
+    const zData = zombiesData["SplitterMinion"];
     if (!zData) return;
     for (let i = 0; i < 2; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -68,7 +67,7 @@ export function handleSpitterDeathSplit(enemy, enemies, zombiesData, canvasWidth
       enemies.push({
         x, y, width: size, height: size,
         speed: zData.speed, health: zData.health, maxHealth: zData.health,
-        color: zData.color || "red", type: "Spitter1"
+        color: zData.color || "red", type: "SplitterMinion"
       });
     }
   }
@@ -97,6 +96,37 @@ export function handleThrowerAbility(enemies, player, projectiles, zombiesData) 
     }
   }
   for (const e of Array.from(timers.keys())) { if (!enemies.includes(e)) timers.delete(e); }
+}
+
+export function handleAcidSpitterAbility(enemies, player, projectiles) {
+    if (!handleAcidSpitterAbility.timers) handleAcidSpitterAbility.timers = new Map();
+    const timers = handleAcidSpitterAbility.timers;
+  
+    for (let e of enemies) {
+      if (e.type === "Spitter") {
+        if (!timers.has(e)) timers.set(e, Date.now());
+        
+        if (Date.now() - timers.get(e) >= 2500) {
+          const ex = e.x + e.width/2, ey = e.y + e.height/2;
+          const px = player.x + player.width/2, py = player.y + player.height/2;
+          const dx = px - ex, dy = py - ey;
+          const dist = Math.hypot(dx, dy);
+          
+          // UPDATED: Engagement range decreased to 400 (Must get closer)
+          if (dist > 0 && dist < 400) { 
+            projectiles.push({
+              x: ex - 6, y: ey - 6, width: 12, height: 12,
+              startX: ex, startY: ey,
+              dx: (dx/dist)*10, dy: (dy/dist)*10, // Slightly Faster Projectile
+              targetDist: dist, 
+              color: "#c6ff00", from: "acid"
+            });
+          }
+          timers.set(e, Date.now());
+        }
+      }
+    }
+    for (const e of Array.from(timers.keys())) { if (!enemies.includes(e)) timers.delete(e); }
 }
 
 export function handleLinkerAbility(enemies, ctx, camera) {
@@ -132,11 +162,9 @@ export function handleLinkerAbility(enemies, ctx, camera) {
   }
 }
 
-// UPDATED: No drawing here, just state updates
 export function handleSniperAbility(enemies, player, projectiles) {
   for (let e of enemies) {
     if (e.type === "sniper") {
-      // Init State
       if (!e.sniperState) {
         e.sniperState = { phase: "aim", timer: Date.now(), angle: 0 };
       }
@@ -147,26 +175,21 @@ export function handleSniperAbility(enemies, player, projectiles) {
       const px = player.x + player.width/2;
       const py = player.y + player.height/2;
       
-      // Phase 1: Aiming
       if (state.phase === "aim") {
-        e.speed = 0; // Stop moving to aim
-        
+        e.speed = 0; 
         const timeElapsed = Date.now() - state.timer;
         const totalAimTime = 2000;
         const lockTime = 1500; 
 
-        // Track player angle until locked
         if (timeElapsed < lockTime) {
             state.angle = Math.atan2(py - ey, px - ex);
         }
 
-        // Fire Transition
         if (timeElapsed > totalAimTime) {
           state.phase = "fire";
           state.timer = Date.now();
         }
       }
-      // Phase 2: Fire
       else if (state.phase === "fire") {
           projectiles.push({
             x: ex - 5, y: ey - 5, width: 12, height: 12,
@@ -179,9 +202,8 @@ export function handleSniperAbility(enemies, player, projectiles) {
           state.phase = "cooldown";
           state.timer = Date.now();
       }
-      // Phase 3: Cooldown
       else if (state.phase === "cooldown") {
-          e.speed = 1.5; // Move slowly while cooling down
+          e.speed = 1.5; 
           if (Date.now() - state.timer > 2000) {
               state.phase = "aim";
               state.timer = Date.now();

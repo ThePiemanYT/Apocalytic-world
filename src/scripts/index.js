@@ -49,10 +49,9 @@ export function spawnFloatingText(x, y, text, color = "#fff", size = 12) { float
 function spawnExplosion(x, y, size, color = "orange") { explosions.push({ x, y, size, life: 1.0, color }); }
 function triggerShake(amount) { shakeAmount = amount; }
 
-// --- FIXED: Achievement Tracking Hook ---
 window.onBulletFired = (amount = 1) => { 
     triggerShake(2); 
-    updateAchievement("3", amount); // ID "3" is Fire 1000 Bullets
+    updateAchievement("3", amount); 
 };
 
 function autoReload() { if (!isReloading && player.ammo === 0 && player.reserveAmmo > 0) playerTryReload(); }
@@ -195,11 +194,22 @@ function gameLoop(timestamp) {
     if (explosions[i].life <= 0) explosions.splice(i, 1);
   }
 
+  // --- UPDATED: Use 'explosionPowerup' for the Exploder/Creeper ---
+  const effects = { 
+      spawnText: spawnFloatingText, 
+      shake: triggerShake, 
+      spawnExplosion: spawnExplosion,
+      playExplosion: () => playSound("explosionPowerup", 80) // FIXED HERE
+  };
+  
   import("./waves.js").then(module => {
-     updateEnemies(player, canvas, module.zombiesData || zombiesData, projectiles, true, null, timeScale, ctx); 
+     updateEnemies(player, canvas, module.zombiesData || zombiesData, projectiles, true, null, timeScale, ctx, effects); 
+     
+     // --- UPDATED: Use 'explosionPowerup' for general deaths too if you want ---
+     // (Or keep it as "explosion" if you have two different sounds)
      const sfxWrapper = { currentTime: 0, play: () => { playSound("explosion", 80); return Promise.resolve(); } };
      const hitWrapper = { currentTime: 0, play: () => { playSound("hitHurt", 50); return Promise.resolve(); } };
-     const effects = { spawnText: spawnFloatingText, shake: triggerShake, spawnExplosion: spawnExplosion };
+     
      handleBulletCollisions(bullets, true, sfxWrapper, { value: score }, document.getElementById("score"), module.zombiesData || zombiesData, canvas, hitWrapper, player, effects);
      setScore(parseInt(document.getElementById("score").textContent.replace(/\D/g, "")) || 0);
   });
@@ -445,9 +455,8 @@ function resetGame() {
   
   resetSessionCoins(); 
 
-  // --- FIXED: LOAD COSMETICS AND HANDLE 'GREEN' -> 'LIME' ---
   let savedBody = localStorage.getItem("equippedBodyColor") || "cyan";
-  if (savedBody === "green") savedBody = "lime"; // MIGRATION FIX
+  if (savedBody === "green") savedBody = "lime"; 
 
   player.cosmetics.bodyColor = savedBody;
   player.cosmetics.hatStyle = localStorage.getItem("equippedHatStyle") || "none";
@@ -457,10 +466,9 @@ function resetGame() {
 
   resetPlayerState();
   
-  // Backup player cosmetics because resetPlayer might wipe them
   const safeCosmetics = { ...player.cosmetics };
   resetPlayer(canvas); 
-  player.cosmetics = safeCosmetics; // Restore them
+  player.cosmetics = safeCosmetics; 
 
   resetEnemies();
   resetWaveState();

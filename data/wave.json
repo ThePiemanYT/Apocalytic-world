@@ -2,138 +2,152 @@
   {
     "wave": 1,
     "zombies": [
-      { "type": "normal", "count": 6 }
+      { "type": "normal", "count": 6 },
+      { "type": "speed", "count": 2 }
     ]
   },
   {
     "wave": 2,
     "zombies": [
-      { "type": "normal", "count": 6 },
+      { "type": "normal", "count": 8 },
       { "type": "speed", "count": 4 }
     ]
   },
-  { "wave": 3,
+  {
+    "wave": 3,
     "zombies": [
       { "type": "normal", "count": 6 },
-      { "type": "speed", "count": 4 },
-      { "type": "tank", "count": 2 }
+      { "type": "tank", "count": 2 },
+      { "type": "Spitter", "count": 2 }
     ]
   },
   {
     "wave": 4,
     "zombies": [
-      { "type": "normal", "count": 8 },
-      { "type": "speed", "count": 5 },
-      { "type": "tank", "count": 3 },
-      { "type": "Spitter", "count": 4 }
+      { "type": "speed", "count": 10 },
+      { "type": "Exploder", "count": 3 }
     ]
   },
   {
     "wave": 5,
     "zombies": [
-      { "type": "normal", "count": 5 },
-      { "type": "speed", "count": 10 },
-      { "type": "tank", "count": 5 },
-      { "type": "Spitter", "count": 3 },
-      { "type": "summoner", "count": 1 }
+      { "type": "tank", "count": 4 },
+      { "type": "summoner", "count": 2 },
+      { "type": "thrower", "count": 2 }
     ]
   },
   {
     "wave": 6,
     "zombies": [
-      { "type": "normal", "count": 5 },
-      { "type": "speed", "count": 4 },
-      { "type": "tank", "count": 2 },
-      { "type": "Spitter", "count": 4 },
-      { "type": "summoner", "count": 2 },
-      { "type": "giant", "count": 1 }
+      { "type": "normal", "count": 10 },
+      { "type": "Splitter", "count": 3 }
     ]
   },
   {
     "wave": 7,
     "zombies": [
-      { "type": "normal", "count": 5 },
-      { "type": "giant", "count": 1 },
-      { "type": "speed", "count": 5 },
-      { "type": "Spitter", "count": 5 },
-      { "type": "summoner", "count": 2 },
-      { "type": "Juggernaut", "count": 2 }
+      { "type": "armored", "count": 2 },
+      { "type": "sniper", "count": 3 },
+      { "type": "speed", "count": 8 }
     ]
   },
   {
     "wave": 8,
     "zombies": [
-      { "type": "normal", "count": 4 },
-      { "type": "speed", "count": 5 },
-      { "type": "giant", "count": 4 },
-      { "type": "summoner", "count": 4 },
-      { "type": "tank", "count": 5 },
-      { "type": "thrower", "count": 5 }
+      { "type": "giant", "count": 1 },
+      { "type": "Stalker", "count": 4 },
+      { "type": "Exploder", "count": 5 }
     ]
   },
   {
     "wave": 9,
     "zombies": [
-      { "type": "normal", "count": 4 },
-      { "type": "speed", "count": 5 },
-      { "type": "giant", "count": 4 },
-      { "type": "summoner", "count": 4 },
-      { "type": "tank", "count": 5 },
-      { "type": "thrower", "count": 5 },
-      { "type": "linker", "count": 1 }
+      { "type": "Juggernaut", "count": 1 },
+      { "type": "linker", "count": 3 },
+      { "type": "speed", "count": 12 }
     ]
   },
   {
     "wave": 10,
     "zombies": [
-      { "type": "normal", "count": 4 },
-      { "type": "speed", "count": 5 },
-      { "type": "giant", "count": 4 },
-      { "type": "summoner", "count": 4 },
-      { "type": "tank", "count": 5 },
-      { "type": "thrower", "count": 5 },
-      { "type": "sniper", "count": 4 },
-      { "type": "Juggernaut", "count": 1 }
+      { "type": "Sentinel", "count": 1 }
     ]
   },
   {
     "wave": 11,
     "zombies": [
-      { "type": "normal", "count": 4 },
-      { "type": "speed", "count": 5 },
-      { "type": "giant", "count": 4 },
-      { "type": "summoner", "count": 4 },
-      { "type": "tank", "count": 5 },
-      { "type": "thrower", "count": 5 },
-      { "type": "sniper", "count": 4 },
-      { "type": "linker", "count": 2 },
-      { "type": "Juggernaut", "count": 1 }
+      { "type": "armored", "count": 5 },
+      { "type": "Spitter", "count": 6 }
     ]
   },
   {
     "wave": 12,
     "zombies": [
-      { "type": "normal", "count": 4 },
-      { "type": "speed", "count": 5 },
-      { "type": "giant", "count": 4 },
+      { "type": "giant", "count": 3 },
       { "type": "summoner", "count": 4 },
-      { "type": "tank", "count": 5 },
-      { "type": "thrower", "count": 5 },
-      { "type": "sniper", "count": 8 }
+      { "type": "sniper", "count": 4 }
     ]
   },
   {
     "wave": 13,
     "zombies": [
-      { "type": "normal", "count": 4 },
-      { "type": "speed", "count": 5 },
-      { "type": "giant", "count": 4 },
+      { "type": "Stalker", "count": 8 },
+      { "type": "Exploder", "count": 8 },
+      { "type": "Splitter", "count": 4 }
+    ]
+  },
+  {
+    "wave": 14,
+    "zombies": [
+      { "type": "tank", "count": 10 },
+      { "type": "linker", "count": 5 },
+      { "type": "thrower", "count": 5 }
+    ]
+  },
+  {
+    "wave": 15,
+    "zombies": [
+      { "type": "Juggernaut", "count": 2 },
+      { "type": "speed", "count": 20 }
+    ]
+  },
+  {
+    "wave": 16,
+    "zombies": [
+      { "type": "armored", "count": 6 },
+      { "type": "giant", "count": 2 },
+      { "type": "Spitter", "count": 8 }
+    ]
+  },
+  {
+    "wave": 17,
+    "zombies": [
+      { "type": "Splitter", "count": 6 },
       { "type": "summoner", "count": 5 },
-      { "type": "tank", "count": 6 },
-      { "type": "thrower", "count": 7 },
+      { "type": "Stalker", "count": 6 }
+    ]
+  },
+  {
+    "wave": 18,
+    "zombies": [
+      { "type": "Juggernaut", "count": 3 },
       { "type": "sniper", "count": 6 },
+      { "type": "Exploder", "count": 10 }
+    ]
+  },
+  {
+    "wave": 19,
+    "zombies": [
+      { "type": "giant", "count": 4 },
+      { "type": "armored", "count": 8 },
       { "type": "linker", "count": 4 },
-      { "type": "Juggernaut", "count": 3 }
+      { "type": "speed", "count": 15 }
+    ]
+  },
+  {
+    "wave": 20,
+    "zombies": [
+      { "type": "Crusher", "count": 1 }
     ]
   }
 ]

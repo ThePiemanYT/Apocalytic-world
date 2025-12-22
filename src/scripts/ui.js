@@ -10,28 +10,35 @@ const healthBar = document.getElementById("healthBar");
 const healthBarContainer = document.getElementById("healthBarContainer");
 const waveDisplay = document.getElementById("waveDisplay");
 const ammoDisplay = document.getElementById("ammoDisplay") || document.createElement("div");
-// REMOVED: coinDisplay reference
 const staminaBar = document.getElementById("staminaBar") || document.createElement("div");
 const staminaFill = document.createElement("div");
 
-// --- Initialization ---
+// --- BOSS UI ELEMENTS ---
+let bossContainer, bossFill, bossLabel, bossWarning;
+
 export function initUI() {
+  // --- FIX: Make all HUD elements click-through ---
+  const hudElements = [scoreDisplay, waveDisplay, healthBarContainer];
+  hudElements.forEach(el => {
+      if (el) el.style.pointerEvents = "none";
+  });
+
   if (!document.getElementById("ammoDisplay")) {
     ammoDisplay.id = "ammoDisplay";
     Object.assign(ammoDisplay.style, {
       position: "absolute", bottom: "16px", right: "32px", fontSize: "20px",
-      color: "#ffe066", fontFamily: "Press Start 2P", textShadow: "2px 2px 4px #222", zIndex: 100
+      color: "#ffe066", fontFamily: "Press Start 2P", textShadow: "2px 2px 4px #222", zIndex: 100,
+      pointerEvents: "none" // FIX: Click-through
     });
     document.body.appendChild(ammoDisplay);
   }
-
-  // REMOVED: Coin Display creation
 
   if (!document.getElementById("staminaBar")) {
     staminaBar.id = "staminaBar";
     Object.assign(staminaBar.style, {
       position: "absolute", bottom: "60px", left: "32px", width: "200px", height: "20px",
-      background: "#444", border: "2px solid #fff", borderRadius: "8px", overflow: "hidden", zIndex: 100
+      background: "#444", border: "2px solid #fff", borderRadius: "8px", overflow: "hidden", zIndex: 100,
+      pointerEvents: "none" // FIX: Click-through
     });
     document.body.appendChild(staminaBar);
   }
@@ -52,6 +59,7 @@ export function initUI() {
           display: "flex", alignItems: "center", justifyContent: "center",
           transition: "transform 0.1s, background 0.2s"
       });
+      // Note: Wardrobe button MUST be clickable, so we don't add pointer-events: none here.
       
       btn.onmouseenter = () => btn.style.background = "rgba(255,255,255,0.2)";
       btn.onmouseleave = () => btn.style.background = "rgba(0,0,0,0.6)";
@@ -67,7 +75,85 @@ export function initUI() {
   Object.assign(staminaFill.style, { height: "100%", width: "100%", background: "linear-gradient(90deg, #80dfff, #4fc3f7)" });
   staminaBar.appendChild(staminaFill);
   
+  initBossUI(); 
   setupSettingsListeners();
+}
+
+function initBossUI() {
+    // 1. Boss Bar Container (Moved DOWN to 80px)
+    bossContainer = document.createElement("div");
+    bossContainer.id = "bossHealthBar";
+    Object.assign(bossContainer.style, {
+        position: "fixed", top: "80px", left: "50%", transform: "translateX(-50%)", // MOVED DOWN
+        width: "600px", maxWidth: "90%", height: "24px", 
+        background: "rgba(0,0,0,0.8)", border: "3px solid #fff", borderRadius: "6px",
+        display: "none", zIndex: "900", boxShadow: "0 0 15px rgba(0,0,0,0.8)",
+        pointerEvents: "none" // FIX: Click-through
+    });
+    
+    // 2. Boss Bar Fill
+    bossFill = document.createElement("div");
+    Object.assign(bossFill.style, {
+        width: "100%", height: "100%", 
+        background: "linear-gradient(90deg, #d32f2f, #ff1744)", 
+        transition: "width 0.2s ease-out"
+    });
+    
+    // 3. Boss Name Label
+    bossLabel = document.createElement("div");
+    Object.assign(bossLabel.style, {
+        position: "absolute", width: "100%", textAlign: "center",
+        color: "#fff", fontFamily: "'Press Start 2P', sans-serif", 
+        fontSize: "14px", top: "-25px", textShadow: "2px 2px 0 #000", letterSpacing: "1px"
+    });
+    
+    // 4. Warning Screen Text
+    bossWarning = document.createElement("div");
+    Object.assign(bossWarning.style, {
+        position: "fixed", top: "35%", left: "50%", transform: "translate(-50%, -50%)",
+        color: "#ff1744", fontFamily: "'Press Start 2P', sans-serif", 
+        fontSize: "48px", textShadow: "4px 4px 0 #000", display: "none", zIndex: "2000",
+        textAlign: "center", pointerEvents: "none" // Already had it, but good to ensure
+    });
+
+    bossContainer.appendChild(bossFill);
+    bossContainer.appendChild(bossLabel);
+    document.body.appendChild(bossContainer);
+    document.body.appendChild(bossWarning);
+}
+
+export function showBossWarning(name) {
+    bossWarning.innerHTML = `⚠ WARNING ⚠<br><span style="font-size:24px;color:white;display:block;margin-top:20px;">${name} HAS AWOKEN</span>`;
+    bossWarning.style.display = "block";
+    playSound("game-over"); 
+    
+    let blinks = 0;
+    bossWarning.style.opacity = "1";
+    const interval = setInterval(() => {
+        bossWarning.style.opacity = bossWarning.style.opacity === "0" ? "1" : "0";
+        blinks++;
+        if(blinks > 7) {
+            clearInterval(interval);
+            bossWarning.style.display = "none";
+            bossWarning.style.opacity = "1";
+        }
+    }, 350);
+}
+
+export function updateBossBar(boss) {
+    if (!bossContainer) return;
+    
+    if (bossContainer.style.display !== "block") {
+        bossContainer.style.display = "block";
+        bossLabel.textContent = boss.type.toUpperCase();
+    }
+    
+    const pct = Math.max(0, (boss.health / boss.maxHealth) * 100);
+    bossFill.style.width = pct + "%";
+}
+
+export function hideBossBar() {
+    if (bossContainer) bossContainer.style.display = "none";
 }
 
 export function toggleGameUI(visible) {
@@ -78,10 +164,10 @@ export function toggleGameUI(visible) {
     if (ammoDisplay) ammoDisplay.style.display = displayVal;
     if (staminaBar) staminaBar.style.display = displayVal;
     
-    // REMOVED: Coin display toggle logic
-
     const wBtn = document.getElementById("wardrobeBtn");
     if(wBtn) wBtn.style.display = visible ? "none" : "flex";
+    
+    if (!visible) hideBossBar();
 }
 
 export function updateHUD() {
@@ -93,7 +179,6 @@ export function updateHUD() {
       else healthBar.style.background = "linear-gradient(90deg, #d32f2f, #ffe066)";
   }
   ammoDisplay.textContent = `Ammo: ${player.ammo} / ${player.reserveAmmo}`;
-  // REMOVED: Coin display update logic
   
   staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
   if(scoreDisplay) scoreDisplay.textContent = "Score: " + score;
@@ -292,13 +377,11 @@ export function openUpgradeScreen(onComplete) {
   refresh();
 }
 
-// --- WARDROBE UI ---
 let previewInterval = null;
-let previewState = {}; // FIXED: Tracks what is visually selected
+let previewState = {}; 
 
 export function openWardrobe() {
     let modal = document.getElementById("wardrobeModal");
-    // Initialize preview state with current player cosmetics
     previewState = { ...player.cosmetics };
 
     if (!modal) {
@@ -332,7 +415,6 @@ export function openWardrobe() {
             const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex";
             if(previewInterval) { clearInterval(previewInterval); previewInterval = null; }
             
-            // --- CRITICAL FIX: EXPLICITLY SAVE TO LOCALSTORAGE ---
             localStorage.setItem("equippedBodyColor", player.cosmetics.bodyColor);
             localStorage.setItem("equippedHatStyle", player.cosmetics.hatStyle);
             localStorage.setItem("equippedEyeStyle", player.cosmetics.eyeStyle);
@@ -342,7 +424,7 @@ export function openWardrobe() {
             saveCosmetics(); 
             playSound("select");
             
-            // Only wardrobeCoins is updated here
+            if(ammoDisplay) updateHUD();
         };
     }
     
@@ -381,8 +463,6 @@ export function openWardrobe() {
         const update = () => {
             if(!items.length) return;
             const item = items[idx];
-            
-            // --- FIX: UPDATE PREVIEW STATE INSTANTLY ---
             previewState[cat.stateKey] = item.id; 
 
             const unlocked = isUnlocked(item); 
@@ -443,7 +523,6 @@ function startPreview() {
         pCtx.save();
         pCtx.translate(w/2, h/2); pCtx.scale(ZOOM, ZOOM);
         
-        // --- FIX: USE PREVIEW STATE FOR DRAWING ---
         const mockPlayer = { ...player, cosmetics: { ...previewState }, x: -16, y: -16, width: 32, height: 32 };
         const mockCam = { x: 0, y: 0 };
         const aim = { x: Math.cos(t) * 60, y: Math.sin(t) * 60, isVector: true };

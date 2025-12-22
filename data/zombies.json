@@ -62,18 +62,18 @@
     "score": 150,
     "knockbackResist": 0.85
   },
-  "Spitter": {
+  "Splitter": {
     "speed": 2.5,
     "health": 16,
-    "color": "red",
+    "color": "#d32f2f",
     "size": 40,
     "score": 35,
     "knockbackResist": 0.3
   },
-  "Spitter1": {
+  "SplitterMinion": {
     "speed": 2.5,
     "health": 8,
-    "color": "red",
+    "color": "#e57373",
     "size": 35,
     "score": 18,
     "knockbackResist": 0.2
@@ -101,5 +101,29 @@
     "size": 35,
     "score": 60,
     "knockbackResist": 0
+  },
+  "Spitter": {
+    "speed": 1.8,
+    "health": 12,
+    "color": "#c6ff00",
+    "size": 42,
+    "score": 45,
+    "knockbackResist": 0.2
+  },
+  "Exploder": {
+    "speed": 3.2,
+    "health": 8,
+    "color": "#ff6d00",
+    "size": 38,
+    "score": 50,
+    "knockbackResist": 0.1
+  },
+  "Stalker": {
+    "speed": 2.8,
+    "health": 15,
+    "color": "rgba(0, 0, 0, 0.2)",
+    "size": 36,
+    "score": 75,
+    "knockbackResist": 0.1
   }
 }
