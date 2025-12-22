@@ -12,6 +12,15 @@ export let paused = false;
 export let score = 0;
 export let isReloading = false;
 
+// --- MULTIPLAYER STATE ---
+export let isSinglePlayer = true; // Moved here from index.js
+export let myId = null;
+export const remotePlayers = {}; 
+
+export function setMyId(id) { myId = id; }
+export function setIsSinglePlayer(val) { isSinglePlayer = val; }
+// -----------------------------
+
 // --- Bullet Pooling System ---
 export const MAX_BULLETS = 300;
 export const bullets = new Array(MAX_BULLETS).fill(null).map(() => ({
@@ -21,10 +30,11 @@ export const bullets = new Array(MAX_BULLETS).fill(null).map(() => ({
   width: 8, height: 8,
   damage: 1,
   color: "default", 
-  isCrit: false
+  isCrit: false,
+  ownerId: null
 }));
 
-export function spawnBullet(x, y, dx, dy, damage, styleId, isCrit) {
+export function spawnBullet(x, y, dx, dy, damage, styleId, isCrit, ownerId = null) {
   for (let i = 0; i < MAX_BULLETS; i++) {
     if (!bullets[i].active) {
       const b = bullets[i];
@@ -36,6 +46,7 @@ export function spawnBullet(x, y, dx, dy, damage, styleId, isCrit) {
       b.damage = damage;
       b.color = styleId; 
       b.isCrit = isCrit;
+      b.ownerId = ownerId; 
       return;
     }
   }
@@ -58,7 +69,6 @@ export const INITIAL_PLAYER_BASES = {
   baseCritMult: 1.5
 };
 
-// --- Load Cosmetics ---
 const savedCosmetics = JSON.parse(localStorage.getItem("playerCosmetics")) || {
   bodyColor: "cyan",
   eyeStyle: "normal",
@@ -69,36 +79,20 @@ const savedCosmetics = JSON.parse(localStorage.getItem("playerCosmetics")) || {
 
 export let player = {
   x: 0, y: 0, width: 32, height: 32,
-  
   normalSpeed: INITIAL_PLAYER_BASES.normalSpeed, 
   sprintSpeed: INITIAL_PLAYER_BASES.sprintSpeed, 
   speed: INITIAL_PLAYER_BASES.normalSpeed,
-  
   maxHealth: 10, health: 10,
   magazineSize: 40, ammo: 40, reserveAmmo: 1000,
   stamina: 100, maxStamina: 100,
-  
-  sprinting: false,
-  dashActive: false, 
-  dashTime: 0, 
-  dashCooldown: 0,
-  
+  sprinting: false, dashActive: false, dashTime: 0, dashCooldown: 0,
   upgrades: { damage: 0, health: 0, speed: 0, magazine: 0, critChance: 0, critDamage: 0 },
   critChance: 0.05, critMultiplier: 1.5,
   lastHitTime: 0, immune: false,
   doubleDamage: false, tripleShot: false, alwaysCrit: false,
-  
-  // --- DEATH & WIN STATES ---
-  isDead: false,
-  deathTimer: 0,
-  
-  // NEW: Victory State
-  isWinning: false,
-  victoryTimer: 0,
-  
-  hurtTime: 0,       
-  maxHurtTime: 10,   
-  
+  isDead: false, deathTimer: 0,
+  isWinning: false, victoryTimer: 0,
+  hurtTime: 0, maxHurtTime: 10,   
   cosmetics: savedCosmetics
 };
 
@@ -125,10 +119,8 @@ export function recalcPlayerStats() {
   player.normalSpeed = INITIAL_PLAYER_BASES.normalSpeed + (player.upgrades.speed || 0) * speedPerLevel;
   player.sprintSpeed = INITIAL_PLAYER_BASES.sprintSpeed + (player.upgrades.speed || 0) * speedPerLevel;
   player.magazineSize = INITIAL_PLAYER_BASES.magazine + (player.upgrades.magazine || 0) * magazinePerLevel;
-  
   player.critChance = INITIAL_PLAYER_BASES.baseCritChance + (player.upgrades.critChance || 0) * critChancePerLevel;
   player.critMultiplier = INITIAL_PLAYER_BASES.baseCritMult + (player.upgrades.critDamage || 0) * critMultPerLevel;
-
   player.speed = player.sprinting ? player.sprintSpeed : player.normalSpeed;
 }
 
@@ -148,17 +140,11 @@ export function resetPlayerState() {
   player.reserveAmmo = 1000;
   player.stamina = player.maxStamina;
   
-  // Reset Flags
-  player.isDead = false;
-  player.deathTimer = 0;
-  player.isWinning = false; // Reset Win State
-  player.victoryTimer = 0;
+  player.isDead = false; player.deathTimer = 0;
+  player.isWinning = false; player.victoryTimer = 0;
   player.hurtTime = 0;
   
-  player.doubleDamage = false;
-  player.tripleShot = false;
-  player.alwaysCrit = false;
-  player.piercingShot = false;
-  player.explosiveShot = false;
-  player.immune = false;
+  player.doubleDamage = false; player.tripleShot = false;
+  player.alwaysCrit = false; player.piercingShot = false;
+  player.explosiveShot = false; player.immune = false;
 }

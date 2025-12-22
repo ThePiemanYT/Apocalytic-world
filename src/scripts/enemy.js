@@ -11,6 +11,7 @@ import { resolveMapCollision, checkCollision } from "./map.js";
 import { getFlowDirection } from "./pathfinding.js"; 
 import { takeDamage } from "./player.js";
 import { updateBossBar, hideBossBar } from "./ui.js"; 
+import { remotePlayers } from "./state.js"; 
 
 export let enemies = [];
 export let projectiles = [];
@@ -61,7 +62,6 @@ export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
   enemies.push(enemy);
 }
 
-// ... (Acid Pool & Explosion Helpers) ...
 export function spawnAcidPool(x, y) {
     acidPools.push({ x, y, radius: 10, maxRadius: 45, timer: 300, damageTimer: 0 });
 }
@@ -125,7 +125,13 @@ export function updateEnemies(player, canvas, zombiesData, projectilesRef, sfxEn
   const px = player.x + player.width / 2;
   const py = player.y + player.height / 2;
 
-  // SPAWN CALLBACK FOR BOSS
+  const allTargets = [{ x: px, y: py, active: !player.isDead }];
+  if (remotePlayers) {
+      Object.values(remotePlayers).forEach(rp => {
+          if (!rp.isDead) allTargets.push({ x: rp.x + rp.width/2, y: rp.y + rp.height/2, active: true });
+      });
+  }
+
   const spawnMinion = (type, x, y) => {
       spawnEnemy(type, zombiesData, canvas.width, x, y);
   };
@@ -133,11 +139,8 @@ export function updateEnemies(player, canvas, zombiesData, projectilesRef, sfxEn
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     
-    // --- BOSS LOGIC ---
     if (e.isBoss) {
         updateBoss(e, player, projectiles, enemies, effects, timeScale, spawnMinion);
-        
-        // FIX: IF PHASING THROUGH WALLS, DO NOT RESOLVE COLLISION
         if (e.state !== "enter" && !e.phaseThroughWalls) {
             resolveMapCollision(e); 
         }
@@ -145,20 +148,31 @@ export function updateEnemies(player, canvas, zombiesData, projectilesRef, sfxEn
     }
 
     const ex = e.x + e.width / 2; const ey = e.y + e.height / 2;
-    const distToPlayer = Math.hypot(px - ex, py - ey);
-    
-    if (e.type === "Exploder" && distToPlayer < 60) {
+
+    let closestTarget = null;
+    let minDist = Infinity;
+
+    allTargets.forEach(t => {
+        if (!t.active) return;
+        const d = Math.hypot(t.x - ex, t.y - ey);
+        if (d < minDist) { minDist = d; closestTarget = t; }
+    });
+
+    if (!closestTarget) closestTarget = { x: px, y: py }; 
+    const distToTarget = minDist;
+
+    if (e.type === "Exploder" && distToTarget < 60) {
         triggerExplosion(ex, ey, 5, effects, player);
         e.health = 0; enemyPool.push(e); enemies.splice(i, 1); continue; 
     }
 
     let dirX = 0; let dirY = 0;
-    if (distToPlayer < 200 && !checkLineOfSight(ex, ey, px, py)) {
-        dirX = (px - ex) / distToPlayer; dirY = (py - ey) / distToPlayer;
+    if (distToTarget < 200 && !checkLineOfSight(ex, ey, closestTarget.x, closestTarget.y)) {
+        dirX = (closestTarget.x - ex) / distToTarget; dirY = (closestTarget.y - ey) / distToTarget;
     } else {
         const flow = getFlowDirection(ex, ey);
         if (flow.x !== 0 || flow.y !== 0) { dirX = flow.x; dirY = flow.y; }
-        else if (distToPlayer > 0) { dirX = (px - ex) / distToPlayer; dirY = (py - ey) / distToPlayer; }
+        else if (distToTarget > 0) { dirX = (closestTarget.x - ex) / distToTarget; dirY = (closestTarget.y - ey) / distToTarget; }
     }
 
     const moveStep = e.speed * timeScale;
@@ -172,7 +186,6 @@ export function updateEnemies(player, canvas, zombiesData, projectilesRef, sfxEn
     resolveMapCollision(e);
   }
 
-  // 3. Separation (Same)
   for (let i = 0; i < enemies.length; i++) {
     for (let j = i + 1; j < enemies.length; j++) {
       const a = enemies[i]; const b = enemies[j];
@@ -200,7 +213,7 @@ export function updateEnemies(player, canvas, zombiesData, projectilesRef, sfxEn
   if (handleSniperAbility) handleSniperAbility(enemies, player, projectiles);
 }
 
-// ... (Collisions & Draw Functions - Identical to previous turn) ...
+// --- FIX IS IN THIS FUNCTION ---
 export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scoreObj, scoreDisplay, zombiesData, canvas, hitHurt, player, effects) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     let e = enemies[i];
@@ -263,7 +276,12 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
       if (!e.isBoss) enemyPool.push(e);
       enemies.splice(i, 1);
       updateAchievement("2", 1);
-      if (sfxEnabled && !e.type === "Exploder") { explosionSound.currentTime = 0; explosionSound.play().catch(()=>{}); }
+      
+      // FIXED LINE BELOW: Changed '!e.type' to 'e.type !=='
+      if (sfxEnabled && e.type !== "Exploder") { 
+          explosionSound.currentTime = 0; 
+          explosionSound.play().catch(()=>{}); 
+      }
     }
   }
 }
@@ -303,7 +321,6 @@ export function handleProjectilePlayerCollision(player, updateHealthBar, endGame
 
 export function updateProjectiles(canvas, timeScale = 1) { /* Logic inside updateEnemies */ }
 
-// ... (Helpers & Drawing same as before) ...
 function checkLineOfSight(x1, y1, x2, y2) {
     const dist = Math.hypot(x2 - x1, y2 - y1);
     const steps = Math.ceil(dist / 40); 
@@ -486,7 +503,7 @@ export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1) {
 
   for (let e of enemies) {
     if (e.isBoss) {
-        drawBoss(ctx, e, camera); // FIXED: Passing camera to drawBoss
+        drawBoss(ctx, e, camera); 
         updateBossBar(e); 
         bossFound = true;
     } else {

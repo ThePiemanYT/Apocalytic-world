@@ -1,10 +1,10 @@
 /* src/scripts/ui.js */
-import { player, score, recalcPlayerStats, gameRunning, saveCosmetics } from "./state.js";
+import { player, score, recalcPlayerStats, gameRunning, saveCosmetics, setIsSinglePlayer } from "./state.js";
 import { cosmeticRegistry, isUnlocked, drawPlayer, drawPlayerIndicator, getBulletStyleDef } from "./cosmetics.js";
 import { playSound, setMusicVolume, setSFXVolume, toggleMusic, toggleSFX } from "./audio.js";
 import { totalCoins, buyCosmetic, hasCosmetic } from "./economy.js"; 
+import { initHost, joinGame, broadcastStart, setNetworkCallbacks } from "./network.js";
 
-// --- References ---
 const scoreDisplay = document.getElementById("score");
 const healthBar = document.getElementById("healthBar");
 const healthBarContainer = document.getElementById("healthBarContainer");
@@ -13,22 +13,18 @@ const ammoDisplay = document.getElementById("ammoDisplay") || document.createEle
 const staminaBar = document.getElementById("staminaBar") || document.createElement("div");
 const staminaFill = document.createElement("div");
 
-// --- BOSS UI ELEMENTS ---
 let bossContainer, bossFill, bossLabel, bossWarning;
+let mpModal = null;
+let lobbyPlayers = [];
 
 export function initUI() {
-  // --- FIX: Make all HUD elements click-through ---
-  const hudElements = [scoreDisplay, waveDisplay, healthBarContainer];
-  hudElements.forEach(el => {
-      if (el) el.style.pointerEvents = "none";
-  });
+  [scoreDisplay, waveDisplay, healthBarContainer].forEach(el => { if (el) el.style.pointerEvents = "none"; });
 
   if (!document.getElementById("ammoDisplay")) {
     ammoDisplay.id = "ammoDisplay";
     Object.assign(ammoDisplay.style, {
       position: "absolute", bottom: "16px", right: "32px", fontSize: "20px",
-      color: "#ffe066", fontFamily: "Press Start 2P", textShadow: "2px 2px 4px #222", zIndex: 100,
-      pointerEvents: "none" // FIX: Click-through
+      color: "#ffe066", fontFamily: "Press Start 2P", textShadow: "2px 2px 4px #222", zIndex: 100, pointerEvents: "none"
     });
     document.body.appendChild(ammoDisplay);
   }
@@ -37,8 +33,7 @@ export function initUI() {
     staminaBar.id = "staminaBar";
     Object.assign(staminaBar.style, {
       position: "absolute", bottom: "60px", left: "32px", width: "200px", height: "20px",
-      background: "#444", border: "2px solid #fff", borderRadius: "8px", overflow: "hidden", zIndex: 100,
-      pointerEvents: "none" // FIX: Click-through
+      background: "#444", border: "2px solid #fff", borderRadius: "8px", overflow: "hidden", zIndex: 100, pointerEvents: "none"
     });
     document.body.appendChild(staminaBar);
   }
@@ -46,28 +41,14 @@ export function initUI() {
   if (!document.getElementById("wardrobeBtn")) {
       const btn = document.createElement("button");
       btn.id = "wardrobeBtn";
-      btn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="32" height="32" fill="white" stroke="black" stroke-width="1.5">
-          <path d="M20.38 3.46L16 2l-4 6-4-6-4.38 1.46a2 2 0 00-1.08 2.57l1.2 4.2A2 2 0 005.6 11.8L8 11v10a1 1 0 001 1h6a1 1 0 001-1V11l2.4.8a2 2 0 001.86-1.57l1.2-4.2a2 2 0 00-1.08-2.57z"/>
-        </svg>
-      `;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" width="32" height="32" fill="white" stroke="black" stroke-width="1.5"><path d="M20.38 3.46L16 2l-4 6-4-6-4.38 1.46a2 2 0 00-1.08 2.57l1.2 4.2A2 2 0 005.6 11.8L8 11v10a1 1 0 001 1h6a1 1 0 001-1V11l2.4.8a2 2 0 001.86-1.57l1.2-4.2a2 2 0 00-1.08-2.57z"/></svg>`;
       Object.assign(btn.style, {
-          position: "absolute", top: "20px", right: "20px",
-          background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)",
-          borderRadius: "8px", cursor: "pointer", padding: "8px",
-          zIndex: "10000",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "transform 0.1s, background 0.2s"
+          position: "absolute", top: "20px", right: "20px", background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)",
+          borderRadius: "8px", cursor: "pointer", padding: "8px", zIndex: "10000", display: "flex", alignItems: "center", justifyContent: "center"
       });
-      // Note: Wardrobe button MUST be clickable, so we don't add pointer-events: none here.
-      
       btn.onmouseenter = () => btn.style.background = "rgba(255,255,255,0.2)";
       btn.onmouseleave = () => btn.style.background = "rgba(0,0,0,0.6)";
-      btn.onclick = () => { 
-          playSound("select"); 
-          openWardrobe(); 
-      };
-      
+      btn.onclick = () => { playSound("select"); openWardrobe(); };
       document.body.appendChild(btn);
   }
 
@@ -77,84 +58,223 @@ export function initUI() {
   
   initBossUI(); 
   setupSettingsListeners();
+  setupMultiplayerMenu();
+}
+
+// --- FIXED MULTIPLAYER MENU SETUP ---
+export function setupMultiplayerMenu() {
+    // FIX: Target the class, not the ID, because index.html uses <div class="menu-main-buttons">
+    const btnContainer = document.querySelector(".menu-main-buttons");
+    if (!btnContainer) return;
+
+    if (document.getElementById("mpBtn")) return; // Prevent duplicates
+
+    const mpBtn = document.createElement("button");
+    mpBtn.id = "mpBtn";
+    mpBtn.textContent = "Multiplayer";
+    
+    mpBtn.onclick = () => {
+        playSound("select");
+        openMultiplayerModal();
+    };
+
+    // Insert after "Start"
+    const startBtn = btnContainer.querySelector("button");
+    if (startBtn && startBtn.nextSibling) {
+        btnContainer.insertBefore(mpBtn, startBtn.nextSibling);
+    } else {
+        btnContainer.appendChild(mpBtn);
+    }
+}
+
+function openMultiplayerModal() {
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("wardrobeBtn").style.display = "none";
+
+    if (!mpModal) {
+        mpModal = document.createElement("div");
+        mpModal.id = "mpModal";
+        Object.assign(mpModal.style, {
+            position: "fixed", inset: "0", background: "rgba(0,0,0,0.95)", zIndex: "20000",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            fontFamily: "'Press Start 2P', sans-serif", color: "white"
+        });
+        document.body.appendChild(mpModal);
+    }
+    mpModal.style.display = "flex";
+    renderMPSelection();
+}
+
+function renderMPSelection() {
+    mpModal.innerHTML = `
+        <h2 style="color:#ffe066; margin-bottom:40px; text-shadow:3px 3px 0 #000;">MULTIPLAYER</h2>
+        <div style="display:flex; gap:30px; margin-bottom:40px; flex-wrap:wrap; justify-content:center;">
+            <div id="hostOption" style="background:#673ab7; padding:30px; border:4px solid white; border-radius:12px; cursor:pointer; text-align:center; min-width:200px;">
+                <div style="font-size:40px; margin-bottom:15px;">👑</div>
+                <div style="font-size:18px;">HOST GAME</div>
+            </div>
+            <div id="joinOption" style="background:#009688; padding:30px; border:4px solid white; border-radius:12px; cursor:pointer; text-align:center; min-width:200px;">
+                <div style="font-size:40px; margin-bottom:15px;">🎮</div>
+                <div style="font-size:18px;">JOIN GAME</div>
+            </div>
+        </div>
+        <button id="mpBackBtn" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-family:inherit; margin-top:20px;">&lt; BACK TO MENU</button>
+    `;
+
+    document.getElementById("hostOption").onclick = () => { playSound("select"); setIsSinglePlayer(false); renderHostLobby(); };
+    document.getElementById("joinOption").onclick = () => { playSound("select"); setIsSinglePlayer(false); renderJoinScreen(); };
+    document.getElementById("mpBackBtn").onclick = () => { closeMultiplayerModal(); };
+}
+
+function renderHostLobby() {
+    lobbyPlayers = ["You (Host)"];
+    
+    mpModal.innerHTML = `
+        <h2 style="color:#ffe066;">LOBBY</h2>
+        <div style="background:rgba(255,255,255,0.1); padding:20px; border-radius:8px; margin:20px 0; text-align:center;">
+            <div style="font-size:12px; color:#aaa; margin-bottom:10px;">ROOM CODE:</div>
+            <div id="roomCodeDisplay" style="font-size:28px; color:white; letter-spacing:2px; user-select:all; cursor:pointer;">Generating...</div>
+        </div>
+        <div style="width:400px; max-width:90%; background:#222; border:2px solid #555; padding:15px; min-height:150px; margin-bottom:20px;">
+            <div style="border-bottom:1px solid #444; padding-bottom:10px; margin-bottom:10px; font-size:12px; color:#888;">PLAYERS JOINED:</div>
+            <div id="lobbyList" style="display:flex; flex-direction:column; gap:8px;">
+                <div style="color:#4CAF50;">> You (Host)</div>
+            </div>
+        </div>
+        <button id="startMatchBtn" style="padding:15px 30px; font-size:16px; background:#4CAF50; color:white; border:none; cursor:pointer; border-radius:4px; opacity:0.5; pointer-events:none;">START MATCH</button>
+        <button id="mpBackBtn" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-family:inherit; margin-top:15px;">CANCEL</button>
+    `;
+
+    initHost((id) => {
+        const codeDisplay = document.getElementById("roomCodeDisplay");
+        if(codeDisplay) {
+            codeDisplay.textContent = id;
+            codeDisplay.style.color = "#69f0ae";
+            const startBtn = document.getElementById("startMatchBtn");
+            startBtn.style.opacity = "1";
+            startBtn.style.pointerEvents = "auto";
+        }
+    });
+
+    setNetworkCallbacks((playerId) => { 
+        lobbyPlayers.push(`Player (${playerId.substr(0,4)})`);
+        updateLobbyListUI();
+        playSound("blipSelect");
+    }, null);
+
+    document.getElementById("startMatchBtn").onclick = () => {
+        playSound("powerUp");
+        mpModal.style.display = "none";
+        broadcastStart();
+        if(window.startGame) window.startGame();
+    };
+    
+    document.getElementById("mpBackBtn").onclick = () => { location.reload(); };
+}
+
+function updateLobbyListUI() {
+    const list = document.getElementById("lobbyList");
+    if(!list) return;
+    list.innerHTML = "";
+    lobbyPlayers.forEach(p => {
+        const div = document.createElement("div");
+        div.textContent = "> " + p;
+        div.style.color = p.includes("Host") ? "#4CAF50" : "white";
+        list.appendChild(div);
+    });
+}
+
+function renderJoinScreen() {
+    mpModal.innerHTML = `
+        <h2 style="color:#009688;">JOIN GAME</h2>
+        <div style="margin:20px 0;">
+            <input id="joinInput" type="text" placeholder="Enter Host ID" style="padding:15px; font-size:16px; font-family:'Press Start 2P'; text-align:center; width:300px; border:none; border-radius:4px;">
+        </div>
+        <div id="joinStatus" style="height:20px; color:#ff5252; font-size:12px; margin-bottom:15px;"></div>
+        <button id="connectBtn" style="padding:15px 30px; font-size:16px; background:#009688; color:white; border:none; cursor:pointer; border-radius:4px;">CONNECT</button>
+        <button id="mpBackBtn" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-family:inherit; margin-top:15px;">CANCEL</button>
+    `;
+
+    document.getElementById("connectBtn").onclick = () => {
+        const id = document.getElementById("joinInput").value.trim();
+        if (!id) { document.getElementById("joinStatus").textContent = "Please enter an ID"; return; }
+        
+        document.getElementById("joinStatus").textContent = "Connecting...";
+        document.getElementById("joinStatus").style.color = "yellow";
+        
+        joinGame(id, () => {
+            renderWaitingScreen();
+        });
+    };
+    
+    document.getElementById("mpBackBtn").onclick = () => { renderMPSelection(); };
+}
+
+function renderWaitingScreen() {
+    mpModal.innerHTML = `
+        <h2 style="color:#4fc3f7;">CONNECTED!</h2>
+        <div style="font-size:14px; margin:20px; color:#aaa; text-align:center; line-height:1.6;">Successfully joined.<br>Waiting for host to start...</div>
+        <div class="loader" style="margin:20px auto; width:40px; height:40px; border:4px solid #333; border-top:4px solid white; border-radius:50%; animation: spin 1s linear infinite;"></div>
+        <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+    `;
+    setNetworkCallbacks(null, () => {
+        mpModal.style.display = "none";
+        if(window.startGame) window.startGame();
+    });
+}
+
+function closeMultiplayerModal() {
+    if(mpModal) mpModal.style.display = "none";
+    document.getElementById("menu").style.display = "flex";
+    const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex";
+    setIsSinglePlayer(true); // Reset to SP
+    playSound("select");
 }
 
 function initBossUI() {
-    // 1. Boss Bar Container (Moved DOWN to 80px)
     bossContainer = document.createElement("div");
     bossContainer.id = "bossHealthBar";
     Object.assign(bossContainer.style, {
-        position: "fixed", top: "80px", left: "50%", transform: "translateX(-50%)", // MOVED DOWN
+        position: "fixed", top: "80px", left: "50%", transform: "translateX(-50%)",
         width: "600px", maxWidth: "90%", height: "24px", 
         background: "rgba(0,0,0,0.8)", border: "3px solid #fff", borderRadius: "6px",
         display: "none", zIndex: "900", boxShadow: "0 0 15px rgba(0,0,0,0.8)",
-        pointerEvents: "none" // FIX: Click-through
+        pointerEvents: "none"
     });
-    
-    // 2. Boss Bar Fill
     bossFill = document.createElement("div");
-    Object.assign(bossFill.style, {
-        width: "100%", height: "100%", 
-        background: "linear-gradient(90deg, #d32f2f, #ff1744)", 
-        transition: "width 0.2s ease-out"
-    });
-    
-    // 3. Boss Name Label
+    Object.assign(bossFill.style, { width: "100%", height: "100%", background: "linear-gradient(90deg, #d32f2f, #ff1744)", transition: "width 0.2s ease-out" });
     bossLabel = document.createElement("div");
     Object.assign(bossLabel.style, {
-        position: "absolute", width: "100%", textAlign: "center",
-        color: "#fff", fontFamily: "'Press Start 2P', sans-serif", 
-        fontSize: "14px", top: "-25px", textShadow: "2px 2px 0 #000", letterSpacing: "1px"
+        position: "absolute", width: "100%", textAlign: "center", color: "#fff", fontFamily: "'Press Start 2P', sans-serif", fontSize: "14px", top: "-25px", textShadow: "2px 2px 0 #000", letterSpacing: "1px"
     });
-    
-    // 4. Warning Screen Text
     bossWarning = document.createElement("div");
     Object.assign(bossWarning.style, {
-        position: "fixed", top: "35%", left: "50%", transform: "translate(-50%, -50%)",
-        color: "#ff1744", fontFamily: "'Press Start 2P', sans-serif", 
-        fontSize: "48px", textShadow: "4px 4px 0 #000", display: "none", zIndex: "2000",
-        textAlign: "center", pointerEvents: "none" // Already had it, but good to ensure
+        position: "fixed", top: "35%", left: "50%", transform: "translate(-50%, -50%)", color: "#ff1744", fontFamily: "'Press Start 2P', sans-serif", fontSize: "48px", textShadow: "4px 4px 0 #000", display: "none", zIndex: "2000", textAlign: "center", pointerEvents: "none"
     });
-
-    bossContainer.appendChild(bossFill);
-    bossContainer.appendChild(bossLabel);
-    document.body.appendChild(bossContainer);
-    document.body.appendChild(bossWarning);
+    bossContainer.appendChild(bossFill); bossContainer.appendChild(bossLabel);
+    document.body.appendChild(bossContainer); document.body.appendChild(bossWarning);
 }
 
 export function showBossWarning(name) {
     bossWarning.innerHTML = `⚠ WARNING ⚠<br><span style="font-size:24px;color:white;display:block;margin-top:20px;">${name} HAS AWOKEN</span>`;
     bossWarning.style.display = "block";
     playSound("game-over"); 
-    
-    let blinks = 0;
-    bossWarning.style.opacity = "1";
+    let blinks = 0; bossWarning.style.opacity = "1";
     const interval = setInterval(() => {
         bossWarning.style.opacity = bossWarning.style.opacity === "0" ? "1" : "0";
         blinks++;
-        if(blinks > 7) {
-            clearInterval(interval);
-            bossWarning.style.display = "none";
-            bossWarning.style.opacity = "1";
-        }
+        if(blinks > 7) { clearInterval(interval); bossWarning.style.display = "none"; bossWarning.style.opacity = "1"; }
     }, 350);
 }
 
 export function updateBossBar(boss) {
     if (!bossContainer) return;
-    
-    if (bossContainer.style.display !== "block") {
-        bossContainer.style.display = "block";
-        bossLabel.textContent = boss.type.toUpperCase();
-    }
-    
+    if (bossContainer.style.display !== "block") { bossContainer.style.display = "block"; bossLabel.textContent = boss.type.toUpperCase(); }
     const pct = Math.max(0, (boss.health / boss.maxHealth) * 100);
     bossFill.style.width = pct + "%";
 }
 
-export function hideBossBar() {
-    if (bossContainer) bossContainer.style.display = "none";
-}
+export function hideBossBar() { if (bossContainer) bossContainer.style.display = "none"; }
 
 export function toggleGameUI(visible) {
     const displayVal = visible ? "block" : "none";
@@ -163,10 +283,7 @@ export function toggleGameUI(visible) {
     if (healthBarContainer) healthBarContainer.style.display = displayVal;
     if (ammoDisplay) ammoDisplay.style.display = displayVal;
     if (staminaBar) staminaBar.style.display = displayVal;
-    
-    const wBtn = document.getElementById("wardrobeBtn");
-    if(wBtn) wBtn.style.display = visible ? "none" : "flex";
-    
+    const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = visible ? "none" : "flex";
     if (!visible) hideBossBar();
 }
 
@@ -179,385 +296,143 @@ export function updateHUD() {
       else healthBar.style.background = "linear-gradient(90deg, #d32f2f, #ffe066)";
   }
   ammoDisplay.textContent = `Ammo: ${player.ammo} / ${player.reserveAmmo}`;
-  
   staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
   if(scoreDisplay) scoreDisplay.textContent = "Score: " + score;
 }
-export function updateWaveUI(currentWave) {
-  if (waveDisplay) waveDisplay.textContent = "Wave: " + (currentWave + 1);
-}
+export function updateWaveUI(currentWave) { if (waveDisplay) waveDisplay.textContent = "Wave: " + (currentWave + 1); }
 
-let panelStack = [];
-let helpData = null;
-let aboutData = null;
+let panelStack = []; let helpData = null; let aboutData = null;
 
 export function openPanel(id) {
   document.querySelectorAll(".menuPanel").forEach(p => { p.style.display = "none"; p.setAttribute("inert", ""); });
-  const menu1 = document.getElementById("menu1");
-  if (menu1) menu1.style.display = "none";
-  
-  const wBtn = document.getElementById("wardrobeBtn");
-  if(wBtn) wBtn.style.display = "none";
-
+  const menu1 = document.getElementById("menu1"); if (menu1) menu1.style.display = "none";
+  const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none";
   const el = document.getElementById(id);
-  if (el) {
-    el.style.display = "flex"; el.removeAttribute("inert");
-    panelStack.push(id);
-    if (id === "helpPanel") loadHelpData();
-    if (id === "aboutPanel") loadAboutData();
-  }
+  if (el) { el.style.display = "flex"; el.removeAttribute("inert"); panelStack.push(id); if (id === "helpPanel") loadHelpData(); if (id === "aboutPanel") loadAboutData(); }
   playSound("select");
 }
 
 export function closePanel(id) {
-  const el = document.getElementById(id);
-  if (el) { el.style.display = "none"; el.setAttribute("inert", ""); }
-  
-  panelStack.pop();
-  const prev = panelStack[panelStack.length - 1];
-
-  if (prev) {
-    const prevEl = document.getElementById(prev);
-    if(prevEl) { prevEl.style.display = "flex"; prevEl.removeAttribute("inert"); }
-  } else {
-    if (!gameRunning) {
-        const menu1 = document.getElementById("menu1");
-        if (menu1) menu1.style.display = "flex";
-        const wBtn = document.getElementById("wardrobeBtn");
-        if(wBtn) wBtn.style.display = "flex";
-    }
-  }
+  const el = document.getElementById(id); if (el) { el.style.display = "none"; el.setAttribute("inert", ""); }
+  panelStack.pop(); const prev = panelStack[panelStack.length - 1];
+  if (prev) { const prevEl = document.getElementById(prev); if(prevEl) { prevEl.style.display = "flex"; prevEl.removeAttribute("inert"); } } 
+  else { if (!gameRunning) { const menu1 = document.getElementById("menu1"); if (menu1) menu1.style.display = "flex"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex"; } }
   playSound("select");
 }
 
 async function loadHelpData() {
-  const helpTabs = document.getElementById("helpTabs");
-  const helpContent = document.getElementById("helpContent");
-  if (!helpTabs) return;
-  
-  if (!helpData) {
-    try { const res = await fetch("data/help.json"); helpData = await res.json(); } catch (e) {}
-  }
-  
+  const helpTabs = document.getElementById("helpTabs"); const helpContent = document.getElementById("helpContent"); if (!helpTabs) return;
+  if (!helpData) { try { const res = await fetch("data/help.json"); helpData = await res.json(); } catch (e) {} }
   helpTabs.innerHTML = "";
-  if(helpData) Object.keys(helpData).forEach(key => {
-      const btn = document.createElement("button");
-      btn.textContent = key; 
-      btn.onclick = () => { 
-          const txt = helpData[key].content.replace(/\n/g, "<br>");
-          helpContent.innerHTML = `<h4 style="color:#ffd166">${helpData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; 
-      };
-      helpTabs.appendChild(btn);
-  });
+  if(helpData) Object.keys(helpData).forEach(key => { const btn = document.createElement("button"); btn.textContent = key; btn.onclick = () => { const txt = helpData[key].content.replace(/\n/g, "<br>"); helpContent.innerHTML = `<h4 style="color:#ffd166">${helpData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; }; helpTabs.appendChild(btn); });
   if (helpData && Object.keys(helpData)[0]) helpTabs.firstChild.click();
 }
 
 async function loadAboutData() {
-    const aboutTabs = document.getElementById("aboutTabs");
-    const aboutContent = document.getElementById("aboutContent");
-    if (!aboutTabs) return;
-    
-    if (!aboutData) {
-        try { const res = await fetch("data/about.json"); aboutData = await res.json(); } catch (e) {}
-    }
-    
+    const aboutTabs = document.getElementById("aboutTabs"); const aboutContent = document.getElementById("aboutContent"); if (!aboutTabs) return;
+    if (!aboutData) { try { const res = await fetch("data/about.json"); aboutData = await res.json(); } catch (e) {} }
     aboutTabs.innerHTML = "";
-    if(aboutData) Object.keys(aboutData).forEach(key => {
-        const btn = document.createElement("button");
-        btn.textContent = key;
-        btn.onclick = () => { 
-            const txt = aboutData[key].content ? aboutData[key].content.replace(/\n/g, "<br>") : ""; 
-            aboutContent.innerHTML = `<h4 style="color:#ffd166">${aboutData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; 
-        };
-        aboutTabs.appendChild(btn);
-    });
-    
+    if(aboutData) Object.keys(aboutData).forEach(key => { const btn = document.createElement("button"); btn.textContent = key; btn.onclick = () => { const txt = aboutData[key].content ? aboutData[key].content.replace(/\n/g, "<br>") : ""; aboutContent.innerHTML = `<h4 style="color:#ffd166">${aboutData[key].title}</h4><p style="color:#ddd; font-size:13px; line-height:1.6;">${txt}</p>`; }; aboutTabs.appendChild(btn); });
     if (aboutData && Object.keys(aboutData)[0]) aboutTabs.firstChild.click();
 }
 
 export function openUpgradeScreen(onComplete) {
-  const upgradeKeys = [
-    { key: "damage", label: "Damage" }, 
-    { key: "health", label: "Health" },
-    { key: "speed", label: "Speed" }, 
-    { key: "magazine", label: "Magazine" },
-    { key: "critChance", label: "Crit Chance" },
-    { key: "critDamage", label: "Crit Dmg" }
-  ];
-  const maxPerUpgrade = 5;
-  const pickLimit = 3;
-  let picks = 0;
-
+  const upgradeKeys = [ { key: "damage", label: "Damage" }, { key: "health", label: "Health" }, { key: "speed", label: "Speed" }, { key: "magazine", label: "Magazine" }, { key: "critChance", label: "Crit Chance" }, { key: "critDamage", label: "Crit Dmg" } ];
+  const maxPerUpgrade = 5; const pickLimit = 3; let picks = 0;
   player.upgrades = player.upgrades || {};
   upgradeKeys.forEach(u => { if (typeof player.upgrades[u.key] !== "number") player.upgrades[u.key] = 0; });
 
-  const modal = document.createElement("div");
-  modal.id = "upgrade-modal";
-  Object.assign(modal.style, {
-    position: "fixed", inset: "0", display: "flex", alignItems: "center",
-    justifyContent: "center", background: "rgba(0,0,0,0.85)", zIndex: 9999
-  });
-
+  const modal = document.createElement("div"); modal.id = "upgrade-modal";
+  Object.assign(modal.style, { position: "fixed", inset: "0", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.85)", zIndex: 9999 });
   const panel = document.createElement("div");
-  Object.assign(panel.style, {
-    width: "600px", maxWidth: "96%", background: "rgba(20,20,20,0.95)",
-    borderRadius: "12px", padding: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.8)",
-    border: "1px solid #444", color: "#fff", fontFamily: "Press Start 2P, sans-serif", textAlign: "center"
-  });
-
-  panel.innerHTML = `
-    <div style="margin-bottom:14px;font-size:20px;color:#ffd166;text-shadow:2px 2px 0px #000;">CHOOSE UPGRADES</div>
-    <div id="pick-count" style="margin-bottom:15px; color:#aaa; font-size:12px;">Picks Remaining: ${pickLimit}</div>
-    <div id="upg-rows" style="display:flex;flex-direction:column;gap:12px;margin-top:10px;"></div>
-  `;
-  modal.appendChild(panel);
-  document.body.appendChild(modal);
-
+  Object.assign(panel.style, { width: "600px", maxWidth: "96%", background: "rgba(20,20,20,0.95)", borderRadius: "12px", padding: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.8)", border: "1px solid #444", color: "#fff", fontFamily: "Press Start 2P, sans-serif", textAlign: "center" });
+  panel.innerHTML = `<div style="margin-bottom:14px;font-size:20px;color:#ffd166;text-shadow:2px 2px 0px #000;">CHOOSE UPGRADES</div><div id="pick-count" style="margin-bottom:15px; color:#aaa; font-size:12px;">Picks Remaining: ${pickLimit}</div><div id="upg-rows" style="display:flex;flex-direction:column;gap:12px;margin-top:10px;"></div>`;
+  modal.appendChild(panel); document.body.appendChild(modal);
   const rows = panel.querySelector("#upg-rows");
 
   function refresh() {
       rows.innerHTML = "";
       upgradeKeys.forEach(u => {
           const row = document.createElement("div");
-          Object.assign(row.style, { 
-              display: "flex", alignItems:"center", justifyContent: "space-between", 
-              background: "rgba(255,255,255,0.05)", padding: "10px 15px", borderRadius: "8px" 
-          });
-          
+          Object.assign(row.style, { display: "flex", alignItems:"center", justifyContent: "space-between", background: "rgba(255,255,255,0.05)", padding: "10px 15px", borderRadius: "8px" });
           const lvl = player.upgrades[u.key] || 0;
-          
           let blocksHTML = "<div style='display:flex;gap:4px;'>";
-          for(let i=0; i<maxPerUpgrade; i++) {
-              const color = i < lvl ? "#ffd166" : "rgba(255,255,255,0.1)";
-              blocksHTML += `<div style="width:20px;height:12px;background:${color};border-radius:2px;"></div>`;
-          }
+          for(let i=0; i<maxPerUpgrade; i++) { const color = i < lvl ? "#ffd166" : "rgba(255,255,255,0.1)"; blocksHTML += `<div style="width:20px;height:12px;background:${color};border-radius:2px;"></div>`; }
           blocksHTML += "</div>";
-
           row.innerHTML = `<span style="font-size:12px;text-align:left;min-width:140px;">${u.label}</span>${blocksHTML}`;
-          
-          const btn = document.createElement("button");
-          btn.textContent = "+";
-          const isMaxed = lvl >= maxPerUpgrade;
-          const canAfford = picks < pickLimit;
-          
-          Object.assign(btn.style, { 
-              background: isMaxed || !canAfford ? "#555" : "linear-gradient(180deg,#ffd166,#ffb347)", 
-              border: "none", cursor: isMaxed || !canAfford ? "default" : "pointer", 
-              fontWeight: "bold", width: "32px", height: "28px", borderRadius: "4px", color: "#222",
-              marginLeft: "15px"
-          });
-          
+          const btn = document.createElement("button"); btn.textContent = "+";
+          const isMaxed = lvl >= maxPerUpgrade; const canAfford = picks < pickLimit;
+          Object.assign(btn.style, { background: isMaxed || !canAfford ? "#555" : "linear-gradient(180deg,#ffd166,#ffb347)", border: "none", cursor: isMaxed || !canAfford ? "default" : "pointer", fontWeight: "bold", width: "32px", height: "28px", borderRadius: "4px", color: "#222", marginLeft: "15px" });
           btn.onclick = () => {
               if (picks >= pickLimit || lvl >= maxPerUpgrade) return;
-              
-              player.upgrades[u.key] = lvl + 1;
-              picks++;
-              playSound("select"); 
-              
-              recalcPlayerStats();
+              player.upgrades[u.key] = lvl + 1; picks++; playSound("select"); recalcPlayerStats();
               if (u.key === 'health') player.health = Math.min(player.health + 2, player.maxHealth);
               if (u.key === 'magazine') player.ammo = Math.min(player.ammo + 4, player.magazineSize);
-              updateHUD();
-              
-              refresh();
-              
-              if (picks >= pickLimit) { 
-                  setTimeout(() => {
-                      modal.remove(); 
-                      if(onComplete) onComplete(); 
-                  }, 300); 
-              }
+              updateHUD(); refresh();
+              if (picks >= pickLimit) { setTimeout(() => { modal.remove(); if(onComplete) onComplete(); }, 300); }
           };
-          row.appendChild(btn);
-          rows.appendChild(row);
+          row.appendChild(btn); rows.appendChild(row);
       });
       document.getElementById("pick-count").textContent = `Picks Remaining: ${pickLimit - picks}`;
   }
-
   refresh();
 }
 
-let previewInterval = null;
-let previewState = {}; 
-
+let previewInterval = null; let previewState = {}; 
 export function openWardrobe() {
-    let modal = document.getElementById("wardrobeModal");
-    previewState = { ...player.cosmetics };
-
+    let modal = document.getElementById("wardrobeModal"); previewState = { ...player.cosmetics };
     if (!modal) {
-        modal = document.createElement("div");
-        modal.id = "wardrobeModal";
-        Object.assign(modal.style, {
-            position: "fixed", inset: "0", background: "rgba(0,0,0,0.95)", 
-            display: "none", flexDirection: "row", alignItems: "center", justifyContent: "center",
-            gap: "40px", zIndex: "10001", fontFamily: "'Press Start 2P', sans-serif", color: "white"
-        });
-        modal.innerHTML = `
-            <div style="display:flex; flex-direction:column; alignItems:center; gap:15px; background:rgba(255,255,255,0.05); padding:20px; border-radius:12px;">
-                <h3 style="color:#ffe066; margin:0;">PREVIEW</h3>
-                <canvas id="wardrobeCanvas" width="400" height="400" style="width:200px; height:200px; background:#222; border:4px solid #444; border-radius:8px; image-rendering:pixelated;"></canvas>
-                <small style="color:#aaa; font-size:10px;">Move & Aim to Test</small>
-            </div>
-            <div style="display:flex; flex-direction:column; width: 450px; max-width:90%;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                    <h2 style="color: #ffe066; margin:0;">WARDROBE</h2>
-                    <div id="wardrobeCoins" style="color:gold; font-size:14px;">Coins: 0</div>
-                </div>
-                <div id="wardrobeGrid" style="display: flex; flex-direction:column; gap: 12px;"></div>
-                <button id="closeWardrobeBtn" style="margin-top: 25px; padding: 15px; background:#4CAF50; border:none; color:white; cursor:pointer;">Save & Close</button>
-            </div>
-        `;
+        modal = document.createElement("div"); modal.id = "wardrobeModal";
+        Object.assign(modal.style, { position: "fixed", inset: "0", background: "rgba(0,0,0,0.95)", display: "none", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "40px", zIndex: "10001", fontFamily: "'Press Start 2P', sans-serif", color: "white" });
+        modal.innerHTML = `<div style="display:flex; flex-direction:column; alignItems:center; gap:15px; background:rgba(255,255,255,0.05); padding:20px; border-radius:12px;"><h3 style="color:#ffe066; margin:0;">PREVIEW</h3><canvas id="wardrobeCanvas" width="400" height="400" style="width:200px; height:200px; background:#222; border:4px solid #444; border-radius:8px; image-rendering:pixelated;"></canvas><small style="color:#aaa; font-size:10px;">Move & Aim to Test</small></div><div style="display:flex; flex-direction:column; width: 450px; max-width:90%;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;"><h2 style="color: #ffe066; margin:0;">WARDROBE</h2><div id="wardrobeCoins" style="color:gold; font-size:14px;">Coins: 0</div></div><div id="wardrobeGrid" style="display: flex; flex-direction:column; gap: 12px;"></div><button id="closeWardrobeBtn" style="margin-top: 25px; padding: 15px; background:#4CAF50; border:none; color:white; cursor:pointer;">Save & Close</button></div>`;
         document.body.appendChild(modal);
-        
         document.getElementById("closeWardrobeBtn").onclick = () => {
-            modal.style.display = "none";
-            document.getElementById("menu").style.display = "flex";
-            const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex";
+            modal.style.display = "none"; document.getElementById("menu").style.display = "flex"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex";
             if(previewInterval) { clearInterval(previewInterval); previewInterval = null; }
-            
-            localStorage.setItem("equippedBodyColor", player.cosmetics.bodyColor);
-            localStorage.setItem("equippedHatStyle", player.cosmetics.hatStyle);
-            localStorage.setItem("equippedEyeStyle", player.cosmetics.eyeStyle);
-            localStorage.setItem("equippedIndicatorStyle", player.cosmetics.indicatorStyle);
-            localStorage.setItem("equippedBulletStyle", player.cosmetics.bulletStyle);
-            
-            saveCosmetics(); 
-            playSound("select");
-            
-            if(ammoDisplay) updateHUD();
+            localStorage.setItem("equippedBodyColor", player.cosmetics.bodyColor); localStorage.setItem("equippedHatStyle", player.cosmetics.hatStyle); localStorage.setItem("equippedEyeStyle", player.cosmetics.eyeStyle); localStorage.setItem("equippedIndicatorStyle", player.cosmetics.indicatorStyle); localStorage.setItem("equippedBulletStyle", player.cosmetics.bulletStyle);
+            saveCosmetics(); playSound("select"); if(ammoDisplay) updateHUD();
         };
     }
-    
-    document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`;
-    document.getElementById("menu").style.display = "none";
-    const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none";
-    const grid = document.getElementById("wardrobeGrid"); grid.innerHTML = ""; 
-    
-    const categories = [
-        { key: "bodies", label: "Body Color", stateKey: "bodyColor" },
-        { key: "hats", label: "Hat Style", stateKey: "hatStyle" },
-        { key: "eyes", label: "Eye Style", stateKey: "eyeStyle" },
-        { key: "indicators", label: "Aim Style", stateKey: "indicatorStyle" },
-        { key: "bullets", label: "Bullet Style", stateKey: "bulletStyle" }
-    ];
-    
+    document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`; document.getElementById("menu").style.display = "none"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none"; const grid = document.getElementById("wardrobeGrid"); grid.innerHTML = ""; 
+    const categories = [ { key: "bodies", label: "Body Color", stateKey: "bodyColor" }, { key: "hats", label: "Hat Style", stateKey: "hatStyle" }, { key: "eyes", label: "Eye Style", stateKey: "eyeStyle" }, { key: "indicators", label: "Aim Style", stateKey: "indicatorStyle" }, { key: "bullets", label: "Bullet Style", stateKey: "bulletStyle" } ];
     categories.forEach(cat => {
-        const row = document.createElement("div");
-        Object.assign(row.style, { display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.1)", padding: "12px", borderRadius: "8px" });
+        const row = document.createElement("div"); Object.assign(row.style, { display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.1)", padding: "12px", borderRadius: "8px" });
         const label = document.createElement("div"); label.textContent = cat.label; label.style.color = "cyan"; label.style.fontSize = "12px";
         const controls = document.createElement("div"); Object.assign(controls.style, { display: "flex", gap: "10px", alignItems: "center" });
-        
-        const dispBtn = document.createElement("button"); 
-        Object.assign(dispBtn.style, { 
-            width: "140px", textAlign: "center", fontSize: "12px", background:"transparent", border:"none", cursor:"default" 
-        });
-
+        const dispBtn = document.createElement("button"); Object.assign(dispBtn.style, { width: "140px", textAlign: "center", fontSize: "12px", background:"transparent", border:"none", cursor:"default" });
         const prev = document.createElement("button"); prev.textContent = "<"; const next = document.createElement("button"); next.textContent = ">";
         [prev, next].forEach(b => { b.style.cursor="pointer"; b.style.padding="5px 10px"; b.style.background="#444"; b.style.color="white"; b.style.border="none"; });
-        
-        let items = cosmeticRegistry[cat.key] || [];
-        let curId = player.cosmetics[cat.stateKey];
-        let idx = items.findIndex(i => i.id === curId);
-        if(idx === -1) idx = 0;
-        
+        let items = cosmeticRegistry[cat.key] || []; let curId = player.cosmetics[cat.stateKey]; let idx = items.findIndex(i => i.id === curId); if(idx === -1) idx = 0;
         const update = () => {
-            if(!items.length) return;
-            const item = items[idx];
-            previewState[cat.stateKey] = item.id; 
-
-            const unlocked = isUnlocked(item); 
-            const owned = hasCosmetic(item.id); 
-
-            dispBtn.onclick = null; 
-
-            if (unlocked) {
-                if (owned) {
-                    dispBtn.textContent = item.name;
-                    dispBtn.style.color = "white";
-                    dispBtn.style.cursor = "default";
-                    player.cosmetics[cat.stateKey] = item.id;
-                } else if (item.type === "buyable") {
-                    dispBtn.textContent = `Buy: ${item.price}`;
-                    const affordable = totalCoins >= item.price;
-                    dispBtn.style.color = affordable ? "#ffd700" : "#d32f2f";
-                    dispBtn.style.cursor = "pointer";
-                    
-                    dispBtn.onclick = () => {
-                        if (buyCosmetic(item.id)) {
-                            playSound("powerUp"); 
-                            document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`;
-                            update(); 
-                        } else {
-                            playSound("hitHurt"); 
-                        }
-                    };
-                }
-            } else {
-                dispBtn.textContent = "Locked"; 
-                dispBtn.style.color = "#888";
-                dispBtn.style.cursor = "default";
-            }
-
-            let hint = row.querySelector(".hint-tooltip");
-            if(!hint) { hint = document.createElement("div"); hint.className = "hint-tooltip"; Object.assign(hint.style, { position:"absolute", right:"20px", fontSize:"10px", color:"#ff5252", marginTop:"35px" }); row.appendChild(hint); }
+            if(!items.length) return; const item = items[idx]; previewState[cat.stateKey] = item.id; const unlocked = isUnlocked(item); const owned = hasCosmetic(item.id); dispBtn.onclick = null; 
+            if (unlocked) { if (owned) { dispBtn.textContent = item.name; dispBtn.style.color = "white"; dispBtn.style.cursor = "default"; player.cosmetics[cat.stateKey] = item.id; } else if (item.type === "buyable") { dispBtn.textContent = `Buy: ${item.price}`; const affordable = totalCoins >= item.price; dispBtn.style.color = affordable ? "#ffd700" : "#d32f2f"; dispBtn.style.cursor = "pointer"; dispBtn.onclick = () => { if (buyCosmetic(item.id)) { playSound("powerUp"); document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`; update(); } else { playSound("hitHurt"); } }; } } else { dispBtn.textContent = "Locked"; dispBtn.style.color = "#888"; dispBtn.style.cursor = "default"; }
+            let hint = row.querySelector(".hint-tooltip"); if(!hint) { hint = document.createElement("div"); hint.className = "hint-tooltip"; Object.assign(hint.style, { position:"absolute", right:"20px", fontSize:"10px", color:"#ff5252", marginTop:"35px" }); row.appendChild(hint); }
             hint.textContent = unlocked ? "" : `Req: ${item.hint || "Unknown"}`;
         };
-        update();
-        prev.onclick = () => { idx = (idx - 1 + items.length) % items.length; update(); playSound("select"); };
-        next.onclick = () => { idx = (idx + 1) % items.length; update(); playSound("select"); };
+        update(); prev.onclick = () => { idx = (idx - 1 + items.length) % items.length; update(); playSound("select"); }; next.onclick = () => { idx = (idx + 1) % items.length; update(); playSound("select"); };
         controls.append(prev, dispBtn, next); row.append(label, controls); grid.append(row);
     });
-
-    modal.style.display = "flex";
-    startPreview();
+    modal.style.display = "flex"; startPreview();
 }
 
 function startPreview() {
     const cvs = document.getElementById("wardrobeCanvas"); if(!cvs) return;
-    const pCtx = cvs.getContext("2d");
-    const w = cvs.width; const h = cvs.height; const ZOOM = 3.5;
-    if(previewInterval) clearInterval(previewInterval);
-    let t = 0;
+    const pCtx = cvs.getContext("2d"); const w = cvs.width; const h = cvs.height; const ZOOM = 3.5;
+    if(previewInterval) clearInterval(previewInterval); let t = 0;
     previewInterval = setInterval(() => {
-        t += 0.05; pCtx.clearRect(0, 0, w, h);
-        pCtx.save();
-        pCtx.translate(w/2, h/2); pCtx.scale(ZOOM, ZOOM);
-        
-        const mockPlayer = { ...player, cosmetics: { ...previewState }, x: -16, y: -16, width: 32, height: 32 };
-        const mockCam = { x: 0, y: 0 };
-        const aim = { x: Math.cos(t) * 60, y: Math.sin(t) * 60, isVector: true };
-        const move = { x: Math.sin(t * 2) * 0.5, y: Math.cos(t) * 0.2 }; 
-        
-        pCtx.fillStyle = "#2a2a2a"; pCtx.fillRect(-50, -50, 100, 100); 
-        drawPlayer(pCtx, mockPlayer, aim, move, mockCam);
-        drawPlayerIndicator(pCtx, mockPlayer, aim, mockCam);
-        
-        const bStyle = getBulletStyleDef(previewState.bulletStyle || player.cosmetics.bulletStyle);
-        const bx = 30, by = 0;
-        if(bStyle.type === "gradient") {
-            const grad = pCtx.createLinearGradient(bx - 4, by - 4, bx + 4, by + 4);
-            bStyle.colors.forEach((c, i) => grad.addColorStop(i / (bStyle.colors.length - 1), c));
-            pCtx.fillStyle = grad;
-        } else {
-            pCtx.fillStyle = bStyle.color;
-        }
-        pCtx.globalAlpha = 0.6; pCtx.beginPath(); pCtx.arc(bx, by, 6, 0, Math.PI*2); pCtx.fill();
-        pCtx.globalAlpha = 1.0; pCtx.fillStyle = "white"; pCtx.beginPath(); pCtx.arc(bx, by, 3, 0, Math.PI*2); pCtx.fill();
-
-        pCtx.restore();
+        t += 0.05; pCtx.clearRect(0, 0, w, h); pCtx.save(); pCtx.translate(w/2, h/2); pCtx.scale(ZOOM, ZOOM);
+        const mockPlayer = { ...player, cosmetics: { ...previewState }, x: -16, y: -16, width: 32, height: 32 }; const mockCam = { x: 0, y: 0 }; const aim = { x: Math.cos(t) * 60, y: Math.sin(t) * 60, isVector: true }; const move = { x: Math.sin(t * 2) * 0.5, y: Math.cos(t) * 0.2 }; 
+        pCtx.fillStyle = "#2a2a2a"; pCtx.fillRect(-50, -50, 100, 100); drawPlayer(pCtx, mockPlayer, aim, move, mockCam); drawPlayerIndicator(pCtx, mockPlayer, aim, mockCam);
+        const bStyle = getBulletStyleDef(previewState.bulletStyle || player.cosmetics.bulletStyle); const bx = 30, by = 0;
+        if(bStyle.type === "gradient") { const grad = pCtx.createLinearGradient(bx - 4, by - 4, bx + 4, by + 4); bStyle.colors.forEach((c, i) => grad.addColorStop(i / (bStyle.colors.length - 1), c)); pCtx.fillStyle = grad; } else { pCtx.fillStyle = bStyle.color; }
+        pCtx.globalAlpha = 0.6; pCtx.beginPath(); pCtx.arc(bx, by, 6, 0, Math.PI*2); pCtx.fill(); pCtx.globalAlpha = 1.0; pCtx.fillStyle = "white"; pCtx.beginPath(); pCtx.arc(bx, by, 3, 0, Math.PI*2); pCtx.fill(); pCtx.restore();
     }, 1000/60);
 }
 
 function setupSettingsListeners() {
-    const mSlider = document.getElementById("musicSlider");
-    const sSlider = document.getElementById("sfxSlider");
-    const mToggle = document.getElementById("musicToggle"); 
-    const sToggle = document.getElementById("sfxToggle"); 
-    if (mSlider) mSlider.addEventListener("input", (e) => setMusicVolume(e.target.value / 100));
-    if (sSlider) sSlider.addEventListener("input", (e) => setSFXVolume(e.target.value / 100));
-    if (mToggle) mToggle.addEventListener("change", (e) => toggleMusic(e.target.checked));
-    if (sToggle) sToggle.addEventListener("change", (e) => toggleSFX(e.target.checked));
+    const mSlider = document.getElementById("musicSlider"); const sSlider = document.getElementById("sfxSlider"); const mToggle = document.getElementById("musicToggle"); const sToggle = document.getElementById("sfxToggle"); 
+    if (mSlider) mSlider.addEventListener("input", (e) => setMusicVolume(e.target.value / 100)); if (sSlider) sSlider.addEventListener("input", (e) => setSFXVolume(e.target.value / 100));
+    if (mToggle) mToggle.addEventListener("change", (e) => toggleMusic(e.target.checked)); if (sToggle) sToggle.addEventListener("change", (e) => toggleSFX(e.target.checked));
 }
 
-window.openPanel = openPanel;
-window.closePanel = closePanel;
+window.openPanel = openPanel; window.closePanel = closePanel;

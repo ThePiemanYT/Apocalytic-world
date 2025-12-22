@@ -6,7 +6,7 @@ import { reload } from "./reload.js";
 import { 
     player, bullets, spawnBullet, getPlayerDamage, 
     isReloading, setIsReloading, setScore, 
-    worldWidth, worldHeight 
+    worldWidth, worldHeight, myId // FIX: Import myId
 } from "./state.js";
 
 function safePlaySound(name, volume = 1.0) {
@@ -22,7 +22,6 @@ export function takeDamage(amount) {
     if (player.immune || player.isDead) return;
 
     player.health -= amount;
-    
     player.hurtTime = 15; 
     safePlaySound("hitHurt", 0.8); 
     
@@ -34,7 +33,6 @@ export function takeDamage(amount) {
     
     if (player.health <= 0) {
         player.health = 0;
-        
         if (!player.isDead) {
             player.isDead = true;
             player.deathTimer = 120; 
@@ -60,11 +58,11 @@ export function playerShoot(targetX, targetY, camera, zoom) {
 
     const styleId = player.cosmetics?.bulletStyle || "default";
 
+    // FIX: Pass 'myId' as the 8th argument
     const fire = (ang) => {
-        spawnBullet(cx, cy, Math.cos(ang) * speed, Math.sin(ang) * speed, getPlayerDamage(), styleId, false);
+        spawnBullet(cx, cy, Math.cos(ang) * speed, Math.sin(ang) * speed, getPlayerDamage(), styleId, false, myId);
     };
 
-    // --- FIX: Count actual bullets fired ---
     let bulletsFired = 1;
     if (player.tripleShot) {
         fire(angle - 0.25); fire(angle); fire(angle + 0.25);
@@ -74,8 +72,6 @@ export function playerShoot(targetX, targetY, camera, zoom) {
     }
 
     safePlaySound("laserShoot", 0.5); 
-    
-    // Pass the count to the global handler
     if (window.onBulletFired) window.onBulletFired(bulletsFired);
 }
 

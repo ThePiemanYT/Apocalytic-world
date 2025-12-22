@@ -1,8 +1,12 @@
 /* src/scripts/camera.js */
 import { canvas, worldWidth, worldHeight } from "./state.js";
 
+// Export 'camera' so other files can find it
 export let camera = { x: 0, y: 0, width: canvas.width, height: canvas.height };
-export let zoom = 1.5;
+
+// Default to 1.0 (Normal). 
+// If this is too small, press '+' in game. If too big, press '-'.
+export let zoom = 1.2; 
 
 export function updateCamera(player) {
   // Center camera on player
@@ -14,8 +18,14 @@ export function updateCamera(player) {
   camera.y = Math.max(0, Math.min(camera.y, worldHeight - canvas.height / zoom));
 }
 
-// Zoom Controls (UI only)
+// ZOOM CONTROLS
 window.addEventListener("keydown", e => {
-  if (e.key === "+") zoom = Math.min(zoom + 0.1, 3);
-  else if (e.key === "-") zoom = Math.max(zoom - 0.1, 0.5);
+  if (e.key === "=" || e.key === "+") {
+      zoom = Math.min(zoom + 0.1, 3);
+      console.log("Zoom:", zoom);
+  }
+  else if (e.key === "-" || e.key === "_") {
+      zoom = Math.max(zoom - 0.1, 0.5);
+      console.log("Zoom:", zoom);
+  }
 });
