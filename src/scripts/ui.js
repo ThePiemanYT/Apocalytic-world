@@ -436,3 +436,34 @@ function setupSettingsListeners() {
 }
 
 window.openPanel = openPanel; window.closePanel = closePanel;
+
+// --- NEW FROST OVERLAY EFFECT ---
+export function drawFrostOverlay(ctx, width, height, intensity = 1.0) {
+    if (intensity <= 0) return;
+    
+    ctx.save();
+    // Create a radial gradient that is transparent in center and icy white/blue at edges
+    const grad = ctx.createRadialGradient(width/2, height/2, height * 0.3, width/2, height/2, height * 0.85);
+    grad.addColorStop(0, "rgba(255, 255, 255, 0)");
+    grad.addColorStop(0.6, `rgba(200, 240, 255, ${0.2 * intensity})`);
+    grad.addColorStop(1, `rgba(180, 230, 255, ${0.7 * intensity})`);
+    
+    ctx.fillStyle = grad;
+    ctx.globalCompositeOperation = "source-over"; // Ensure it draws on top
+    ctx.fillRect(0, 0, width, height);
+
+    // Optional: Add some "crack" or "snowflake" details at corners
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * intensity})`;
+    const cornerSize = 100;
+    
+    // Top-Left
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(cornerSize, 0); ctx.lineTo(0, cornerSize); ctx.fill();
+    // Top-Right
+    ctx.beginPath(); ctx.moveTo(width, 0); ctx.lineTo(width - cornerSize, 0); ctx.lineTo(width, cornerSize); ctx.fill();
+    // Bottom-Left
+    ctx.beginPath(); ctx.moveTo(0, height); ctx.lineTo(cornerSize, height); ctx.lineTo(0, height - cornerSize); ctx.fill();
+    // Bottom-Right
+    ctx.beginPath(); ctx.moveTo(width, height); ctx.lineTo(width - cornerSize, height); ctx.lineTo(width, height - cornerSize); ctx.fill();
+
+    ctx.restore();
+}

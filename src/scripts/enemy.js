@@ -32,7 +32,7 @@ function getFreeEnemy() {
 }
 
 export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
-  if (type === "Sentinel" || type === "Crusher") {
+  if (type === "Sentinel" || type === "Crusher" || type === "Frost-Core Construct" || type === "The Chrono-Thief") {
       const boss = createBoss(type, canvasWidth, 0); 
       enemies.push(boss);
       return;
@@ -42,6 +42,8 @@ export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
   const enemy = getFreeEnemy();
   
   let size = (zData && zData.size) ? zData.size : 40;
+  if (type === "IceBlock") size = 45; // NEW
+
   const lowerType = type.toLowerCase();
   
   if (lowerType === 'juggernaut') size = 77; 
@@ -50,10 +52,10 @@ export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
   enemy.width = size; enemy.height = size;
   enemy.x = x !== null ? x : Math.random() * (canvasWidth - size);
   enemy.y = y !== null ? y : 0;
-  enemy.speed = (zData && zData.speed) ? zData.speed : 2;
-  enemy.health = (zData && zData.health) ? zData.health : 4;
+  enemy.speed = (zData && zData.speed) ? zData.speed : (type === "IceBlock" ? 0 : 2);
+  enemy.health = (zData && zData.health) ? zData.health : (type === "IceBlock" ? 25 : 4);
   enemy.maxHealth = enemy.health;
-  enemy.color = (zData && zData.color) ? zData.color : "#66bb6a";
+  enemy.color = (zData && zData.color) ? zData.color : (type === "IceBlock" ? "#e1f5fe" : "#66bb6a");
   enemy.type = type;
   enemy.hitFlash = 0;
   enemy.isBoss = false; 
@@ -65,6 +67,7 @@ export function spawnEnemy(type, zombiesData, canvasWidth, x = null, y = null) {
 export function spawnAcidPool(x, y) {
     acidPools.push({ x, y, radius: 10, maxRadius: 45, timer: 300, damageTimer: 0 });
 }
+
 function updateAcidPools(player) {
     for (let i = acidPools.length - 1; i >= 0; i--) {
         let pool = acidPools[i];
@@ -78,6 +81,7 @@ function updateAcidPools(player) {
         if (pool.damageTimer > 0) pool.damageTimer--;
     }
 }
+
 function drawAcidPools(ctx, camera) {
     const t = performance.now() / 200;
     for (let pool of acidPools) {
@@ -90,6 +94,7 @@ function drawAcidPools(ctx, camera) {
     }
     ctx.globalAlpha = 1.0;
 }
+
 export function triggerExplosion(x, y, baseDamage, effects, playerRef = null) {
     const blastRadius = 100;
     const explosionDmg = Math.max(1, Math.ceil(baseDamage * 0.3));
@@ -189,7 +194,7 @@ export function updateEnemies(player, canvas, zombiesData, projectilesRef, sfxEn
   for (let i = 0; i < enemies.length; i++) {
     for (let j = i + 1; j < enemies.length; j++) {
       const a = enemies[i]; const b = enemies[j];
-      if (a.isBoss || b.isBoss) continue; 
+      if (a.isBoss || b.isBoss || a.type === "IceBlock" || b.type === "IceBlock") continue; 
       if (Math.abs(a.x - b.x) > 60 || Math.abs(a.y - b.y) > 60) continue;
       let dx = (a.x + a.width/2) - (b.x + b.width/2);
       let dy = (a.y + a.height/2) - (b.y + b.height/2);
@@ -238,7 +243,7 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
         if (player.explosiveShot) triggerExplosion(e.x + e.width/2, e.y + e.height/2, baseDmg, effects, player);
         if (player.piercingShot) { if (!b.hitList) b.hitList = []; b.hitList.push(e); } else { b.active = false; }
         
-        if (!e.isBoss) {
+        if (!e.isBoss && e.type !== "IceBlock") {
             const knockback = 5; 
             let kdx = b.dx || 0, kdy = b.dy || 0;
             if(kdx===0 && kdy===0) kdx=1;
@@ -288,7 +293,10 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
 
 export function handlePlayerCollisions(player, updateHealthBar, endGame) {
   const now = Date.now();
+  
+  // 1. Local Player
   for (let e of enemies) {
+    if (e.type === "IceBlock") continue;
     if (player.x < e.x + e.width && player.x + player.width > e.x && player.y < e.y + e.height && player.y + player.height > e.y) {
       if (player.immune) continue;
       let dmg = 1;
@@ -301,6 +309,39 @@ export function handlePlayerCollisions(player, updateHealthBar, endGame) {
       }
     }
   }
+
+  // 2. Remote Players (Host Only Logic)
+  if (remotePlayers) {
+      Object.values(remotePlayers).forEach(rp => {
+          if (rp.isDead) return;
+          for (let e of enemies) {
+             // Simple AABB
+             if (rp.x < e.x + e.width && rp.x + 32 > e.x && rp.y < e.y + e.height && rp.y + 32 > e.y) {
+                 // Check debounce/immunity if we tracked it for remote players
+                 // For now, let's just apply damage periodically or per frame if we don't track time
+                 // We need a lastHitTime on rp
+                 if (!rp.lastHitTime) rp.lastHitTime = 0;
+                 if (now - rp.lastHitTime >= 1000) {
+                     let dmg = 1;
+                     if (e.type === "Exploder") dmg = 2;
+                     if (e.isBoss) dmg = 3;
+                     
+                     rp.hp = (rp.hp || 10) - dmg;
+                     rp.lastHitTime = now;
+                     
+                     // We don't have a direct way to notify client of damage except via state sync
+                     // The client will see updated HP in next broadcast
+                     if (rp.hp <= 0) {
+                         rp.hp = 0;
+                         rp.isDead = true;
+                         // Ideally notify client they died
+                     }
+                 }
+             }
+          }
+      });
+  }
+
   return false;
 }
 
@@ -308,12 +349,43 @@ export function handleProjectilePlayerCollision(player, updateHealthBar, endGame
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i];
     if (p.from === "acid") continue; 
+
+    // Local Player
     if (player.x < p.x + p.width && player.x + player.width > p.x && player.y < p.y + p.height && player.y + player.height > p.y) {
       if (player.immune) { projectiles.splice(i, 1); continue; }
-      const dmg = (p.from === "boss_sniper" ? 4 : (p.from === "sniper" ? 2 : 1));
+      
+      let dmg = (p.from === "boss_sniper" ? 4 : (p.from === "sniper" ? 2 : 1));
+      
+      // Brittle Touch Logic
+      if (p.from === "frost_boss") {
+          player.frostbiteStacks = (player.frostbiteStacks || 0) + 1;
+          dmg = 1; // Base damage for frost bolt
+      }
+
       takeDamage(dmg);
       projectiles.splice(i, 1);
       if (player.isDead) { endGame(); return true; }
+      continue; // Projectile gone
+    }
+    
+    // Remote Players
+    if (remotePlayers) {
+        let hitRemote = false;
+        const rps = Object.values(remotePlayers);
+        for(let rp of rps) {
+            if (rp.isDead) continue;
+            if (rp.x < p.x + p.width && rp.x + 32 > p.x && rp.y < p.y + p.height && rp.y + 32 > p.y) {
+                 const dmg = (p.from === "boss_sniper" ? 4 : (p.from === "sniper" ? 2 : 1));
+                 rp.hp = (rp.hp || 10) - dmg;
+                 if (rp.hp <= 0) { rp.hp = 0; rp.isDead = true; }
+                 hitRemote = true;
+                 break; // Hit one player per projectile usually
+            }
+        }
+        if (hitRemote) {
+            projectiles.splice(i, 1);
+            continue;
+        }
     }
   }
   return false;
@@ -399,9 +471,47 @@ function drawGiant(ctx, t, hitFlash, color) {
 }
 
 function drawArmored(ctx, t, hitFlash, color) {
-  const size = 30; const c = color || "aquamarine";
-  if (hitFlash) { ctx.fillStyle = "white"; ctx.fillRect(-size/2, -size/2, size, size); } 
-  else { layeredRect(ctx, size, size, c); ctx.save(); ctx.rotate(Math.sin(t) * 0.5); ctx.strokeStyle = "#000"; ctx.lineWidth = 5; ctx.strokeRect(-(size+10)/2, -(size+10)/2, size+10, size+10); ctx.restore(); }
+  const size = 44; 
+  const c = color || "#546e7a"; // Steel Blue Grey
+  
+  if (hitFlash) { 
+      ctx.fillStyle = "white"; 
+      ctx.fillRect(-size/2, -size/2, size, size); 
+  } else {
+      // 1. Heavy Base Chassis (Dark Metal)
+      ctx.fillStyle = "#263238";
+      ctx.fillRect(-size/2, -size/2, size, size);
+      
+      // 2. Shoulder/Corner Armor Pads
+      ctx.fillStyle = "#37474f";
+      const padSize = 14;
+      // Top-Left & Top-Right
+      ctx.fillRect(-size/2 - 2, -size/2 - 2, padSize, padSize);
+      ctx.fillRect(size/2 - padSize + 2, -size/2 - 2, padSize, padSize);
+      // Bottom-Left & Bottom-Right
+      ctx.fillRect(-size/2 - 2, size/2 - padSize + 2, padSize, padSize);
+      ctx.fillRect(size/2 - padSize + 2, size/2 - padSize + 2, padSize, padSize);
+
+      // 3. Central Plating (Hexagonal-ish hint)
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.moveTo(-10, -18); ctx.lineTo(10, -18);
+      ctx.lineTo(18, 0); ctx.lineTo(10, 18);
+      ctx.lineTo(-10, 18); ctx.lineTo(-18, 0);
+      ctx.closePath();
+      ctx.fill();
+      
+      // 4. Glowing Power Core
+      const pulse = Math.sin(t * 5) * 0.5 + 0.5;
+      ctx.fillStyle = `rgba(0, 229, 255, ${0.6 + pulse * 0.4})`; // Cyan glow
+      ctx.shadowColor = "#00e5ff"; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+      
+      // 5. Visor / Optics
+      ctx.fillStyle = "#cfd8dc";
+      ctx.fillRect(-12, -8, 24, 3);
+  }
 }
 
 function drawJuggernaut(ctx, t, hitFlash, color) {
@@ -534,11 +644,34 @@ export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1) {
         else if (type === 'spitter') drawAcidSpitter(ctx, t, isFlashing, c, radius);
         else if (type === 'exploder') drawExploder(ctx, t, isFlashing, c);
         else if (type === 'stalker') drawStalker(ctx, t, isFlashing, c);
+        else if (type === 'iceblock') {
+            // Draw a crystalline ice wall segment
+            ctx.fillStyle = isFlashing ? "white" : "#81d4fa";
+            // Main block
+            ctx.fillRect(-22, -22, 44, 44);
+            
+            // Inner detail for depth
+            ctx.fillStyle = "#4fc3f7";
+            ctx.fillRect(-15, -15, 30, 30);
+            
+            // Reflection/Highlight
+            ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+            ctx.beginPath();
+            ctx.moveTo(-22, -22);
+            ctx.lineTo(0, -22);
+            ctx.lineTo(-22, 0);
+            ctx.fill();
+
+            // Border
+            ctx.strokeStyle = "#0288d1";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-22, -22, 44, 44);
+        }
         else drawBasic(ctx, t, isFlashing, c); 
         ctx.restore();
     }
 
-    if (e.maxHealth > 1 && !e.isBoss) {
+    if (e.maxHealth > 1 && !e.isBoss && e.type !== "IceBlock") {
       const cx = e.x - camera.x + e.width/2;
       const cy = e.y - camera.y + e.height/2;
       ctx.save();
@@ -559,6 +692,27 @@ export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1) {
   if (!bossFound) hideBossBar();
 }
 
+export function resolveEnemyBlocking(player) {
+    for (const e of enemies) {
+        if (e.type === "IceBlock") {
+            if (player.x < e.x + e.width && player.x + player.width > e.x &&
+                player.y < e.y + e.height && player.y + player.height > e.y) {
+                
+                const overlapX = Math.min((player.x + player.width) - e.x, (e.x + e.width) - player.x);
+                const overlapY = Math.min((player.y + player.height) - e.y, (e.y + e.height) - player.y);
+
+                if (overlapX < overlapY) {
+                    if (player.x < e.x) player.x -= overlapX;
+                    else player.x += overlapX;
+                } else {
+                    if (player.y < e.y) player.y -= overlapY;
+                    else player.y += overlapY;
+                }
+            }
+        }
+    }
+}
+
 export function drawProjectiles(ctx, camera) {
   const t = performance.now() / 200;
   for (let p of projectiles) {
@@ -571,7 +725,7 @@ export function drawProjectiles(ctx, camera) {
     if (isRock) {
         ctx.rotate(t); ctx.fillStyle = "#5d4037"; ctx.beginPath(); ctx.moveTo(p.width/2, 0); ctx.lineTo(p.width*0.2, p.width*0.4); ctx.lineTo(-p.width*0.3, p.width*0.3); ctx.lineTo(-p.width/2, -p.width*0.1); ctx.lineTo(0, -p.width*0.4); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#8d6e63"; ctx.beginPath(); ctx.arc(0,0, p.width/3, 0, Math.PI*2); ctx.fill();
     } else if (isSniper) {
-        ctx.fillStyle = "red"; ctx.shadowBlur = 10; ctx.shadowColor = "red"; ctx.fillRect(-p.width/2, -p.height/2, p.width, p.height); ctx.shadowBlur = 0; ctx.fillStyle = "white"; ctx.fillRect(-p.width/4, -p.height/4, p.width/2, p.height/2);
+        ctx.fillStyle = "red"; ctx.shadowBlur = 10; ctx.shadowColor = "red"; ctx.fillRect(-p.width/2, -p.height/2, p.width, p.height); ctx.shadowBlur = 10; ctx.fillStyle = "white"; ctx.fillRect(-p.width/4, -p.height/4, p.width/2, p.height/2);
     } else if (isAcid) {
         ctx.rotate(t * 2); 
         ctx.fillStyle = "#c6ff00"; ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.fill(); 
@@ -581,4 +735,32 @@ export function drawProjectiles(ctx, camera) {
     }
     ctx.restore();
   }
+}
+
+export function handleWhirlwind(player, enemies, effects) {
+    if (!player.whirlwind) return;
+    const range = 90; // Increased from 85
+    const force = 28; // Increased from 20 (40% stronger)
+
+    enemies.forEach(e => {
+        if (e.isBoss) return;
+        const dist = Math.hypot(e.x + e.width/2 - (player.x + player.width/2), e.y + e.height/2 - (player.y + player.height/2));
+        if (dist < range) {
+             if (e.whirlwindCooldown > 0) { e.whirlwindCooldown--; return; }
+
+             const dmg = 2 + Math.floor(Math.random() * 3);
+             e.health -= dmg;
+             e.hitFlash = 10;
+             e.whirlwindCooldown = 30; 
+
+             const angle = Math.atan2(e.y - player.y, e.x - player.x);
+             e.x += Math.cos(angle) * force;
+             e.y += Math.sin(angle) * force;
+             resolveMapCollision(e);
+
+             if (effects && effects.spawnText) effects.spawnText(e.x + e.width/2, e.y, dmg, "#81d4fa", 16);
+        } else {
+             if (e.whirlwindCooldown > 0) e.whirlwindCooldown--;
+        }
+    });
 }

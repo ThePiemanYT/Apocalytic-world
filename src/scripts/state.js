@@ -63,7 +63,7 @@ export const INITIAL_PLAYER_BASES = {
   maxHealth: 10,
   normalSpeed: 5,
   sprintSpeed: 7.5,
-  magazine: 40,
+  magazine: 50,
   baseDamage: 1,
   baseCritChance: 0.05,
   baseCritMult: 1.5
@@ -83,13 +83,31 @@ export let player = {
   sprintSpeed: INITIAL_PLAYER_BASES.sprintSpeed, 
   speed: INITIAL_PLAYER_BASES.normalSpeed,
   maxHealth: 10, health: 10,
-  magazineSize: 40, ammo: 40, reserveAmmo: 1000,
-  stamina: 100, maxStamina: 100,
+  magazineSize: 50, ammo: 50, reserveAmmo: 1250,
+  stamina: 125, maxStamina: 125,
   sprinting: false, dashActive: false, dashTime: 0, dashCooldown: 0,
   upgrades: { damage: 0, health: 0, speed: 0, magazine: 0, critChance: 0, critDamage: 0 },
   critChance: 0.05, critMultiplier: 1.5,
   lastHitTime: 0, immune: false,
   doubleDamage: false, tripleShot: false, alwaysCrit: false,
+  timeSlowed: false, // NEW
+  whirlwind: false, // NEW: Whirlwind Powerup
+  
+  // Status Effects
+  frostbiteStacks: 0,
+  isSliding: false,
+  slideDir: { x: 0, y: 0 },
+  slideTimer: 0,
+  
+  isFrozen: false,
+  freezeTimer: 0,
+
+  // Chrono-Thief Specifics
+  positionHistory: [], // Stores {x,y} for Time Skip
+  ageingCurse: false,
+  ageingTimer: 0,
+  lastShootTime: 0, // To throttle shooting speed
+
   isDead: false, deathTimer: 0,
   isWinning: false, victoryTimer: 0,
   hurtTime: 0, maxHurtTime: 10,   
@@ -137,7 +155,7 @@ export function resetPlayerState() {
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
   player.ammo = player.magazineSize;
-  player.reserveAmmo = 1000;
+  player.reserveAmmo = 1250;
   player.stamina = player.maxStamina;
   
   player.isDead = false; player.deathTimer = 0;
@@ -147,4 +165,9 @@ export function resetPlayerState() {
   player.doubleDamage = false; player.tripleShot = false;
   player.alwaysCrit = false; player.piercingShot = false;
   player.explosiveShot = false; player.immune = false;
+  player.timeSlowed = false; // NEW
+  player.whirlwind = false;
+  player.frostbiteStacks = 0;
+  player.isSliding = false;
+  player.slideTimer = 0;
 }

@@ -62,6 +62,8 @@ export function updatePowerupHUD(playerRef) {
       playerRef.alwaysCrit = activePowerups.some(p => p.type === "Critical");
       playerRef.piercingShot = activePowerups.some(p => p.type === "Piercing");
       playerRef.explosiveShot = activePowerups.some(p => p.type === "Explosive");
+      playerRef.timeSlowed = activePowerups.some(p => p.type === "TimeSlow");
+      playerRef.whirlwind = activePowerups.some(p => p.type === "Whirlwind");
   }
 
   // Draw HUD Elements
@@ -115,7 +117,7 @@ export const powerupTypes = [
     effect: (p) => { applyTimedPowerup(p, "Immune"); }
   },
   {
-    label: "Triple", color: "#e040fb",
+    label: "Triple", color: "#536dfe",
     effect: (p) => { applyTimedPowerup(p, "Triple"); }
   },
   {
@@ -129,6 +131,14 @@ export const powerupTypes = [
   {
     label: "Explosive", color: "#ff6d00",
     effect: (p) => { applyTimedPowerup(p, "Explosive"); }
+  },
+  {
+    label: "TimeSlow", color: "#9c27b0", // Purple
+    effect: (p) => { applyTimedPowerup(p, "TimeSlow"); }
+  },
+  {
+    label: "Whirlwind", color: "#81d4fa", // Light Blue
+    effect: (p) => { applyTimedPowerup(p, "Whirlwind"); }
   },
   {
     label: "MaxAmmo", color: "#b0bec5",
@@ -216,19 +226,19 @@ export function drawAndHandlePowerups(ctx, playerRef, updateAmmo, sfxEnabled, po
       drawEdgeTracker(ctx, playerRef, nearestItem, camera, time);
   }
 
-  drawActiveBuffs(ctx, playerRef, camera, time);
+  // Removed internal call to drawActiveBuffs to allow external rendering (e.g. for color/grayscale separation)
 }
 
 // --- VISUALS: ACTIVE BUFFS ---
-function drawActiveBuffs(ctx, playerRef, camera, time) {
+export function drawActiveBuffs(ctx, playerRef, camera, time) {
     const cx = playerRef.x + playerRef.width / 2 - camera.x;
     const cy = playerRef.y + playerRef.height / 2 - camera.y;
 
     if (activePowerups.some(p => p.type === "Triple")) {
         const orbitSpeed = time / 150;
         const radius = 40;
-        ctx.fillStyle = "#e040fb";
-        ctx.shadowColor = "#e040fb"; ctx.shadowBlur = 10;
+        ctx.fillStyle = "#536dfe";
+        ctx.shadowColor = "#536dfe"; ctx.shadowBlur = 10;
         for (let i = 0; i < 3; i++) {
             const angle = orbitSpeed + (i * (Math.PI * 2 / 3));
             ctx.beginPath();
@@ -327,6 +337,50 @@ function drawActiveBuffs(ctx, playerRef, camera, time) {
 
     if (activePowerups.some(p => p.type === "Immune")) {
         drawImmunityShield(ctx, playerRef, camera); 
+    }
+
+    if (activePowerups.some(p => p.type === "TimeSlow")) {
+        // Simple visual: Purple aura or clock
+        ctx.save();
+        ctx.translate(cx, cy);
+        const ringScale = 1 + Math.sin(time / 300) * 0.1;
+        ctx.scale(ringScale, ringScale);
+        ctx.strokeStyle = "rgba(156, 39, 176, 0.5)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 54, 0, Math.PI * 2); // Increased from 45 (45 * 1.2 = 54)
+        ctx.stroke();
+        
+        // Clock hand
+        ctx.rotate(time / 500);
+        ctx.beginPath(); // Added beginPath for safety
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -48); // Increased from 40 (40 * 1.2 = 48)
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    if (activePowerups.some(p => p.type === "Whirlwind")) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        const spin = time / 100;
+        ctx.rotate(spin);
+        ctx.strokeStyle = "rgba(129, 212, 250, 0.6)";
+        ctx.lineWidth = 4;
+        ctx.lineCap = "round";
+        const r = 84; // Increased from 80
+        
+        // Inner Ring
+        ctx.beginPath(); ctx.arc(0, 0, r - 20, 0, 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, r - 20, 3, 5); ctx.stroke();
+        
+        // Outer Ring
+        ctx.rotate(spin * -0.5); // Counter rotate slightly
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, r, 1, 3); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, r, 4, 6); ctx.stroke();
+        
+        ctx.restore();
     }
 }
 

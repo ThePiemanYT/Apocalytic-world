@@ -7,23 +7,23 @@ import {
   spawnBullet, remotePlayers, myId, isSinglePlayer // Imported isSinglePlayer
 } from "./state.js";
 
-import { drawPlayer, drawPlayerIndicator, getBulletStyleDef } from "./cosmetics.js";
+import { drawPlayer, drawPlayerIndicator, getBulletStyleDef, cosmeticRegistry } from "./cosmetics.js";
 import { playerShoot, playerTryReload, updatePlayerMovement, handleSprintKey, resetPlayer } from "./player.js";
-import { initUI, updateHUD, openUpgradeScreen, updateWaveUI, openPanel, closePanel, toggleGameUI, setupMultiplayerMenu } from "./ui.js";
+import { initUI, updateHUD, openUpgradeScreen, updateWaveUI, openPanel, closePanel, toggleGameUI, setupMultiplayerMenu, drawFrostOverlay } from "./ui.js";
 import { sounds, playSound, backgroundMusic, musicEnabled } from "./audio.js";
 import { camera, updateCamera, zoom } from "./camera.js";
 import { loadGameData, startWave, updateWaveLogic, waves, currentWave, waveSpawning, resetWaveState, zombiesData } from "./waves.js";
-import { enemies, resetEnemies, updateEnemies, drawEnemies, handleBulletCollisions, handlePlayerCollisions, projectiles, updateProjectiles, drawProjectiles, handleProjectilePlayerCollision, triggerExplosion } from "./enemy.js";
+import { enemies, resetEnemies, updateEnemies, drawEnemies, handleBulletCollisions, handlePlayerCollisions, handleWhirlwind, projectiles, updateProjectiles, drawProjectiles, handleProjectilePlayerCollision, triggerExplosion, resolveEnemyBlocking } from "./enemy.js";
 import { reload } from "./reload.js";
 import { drawMap, resolveMapCollision, checkCollision } from "./map.js";
 import { initPathfinding, updatePathfinding } from "./pathfinding.js";
-import { drawAndHandlePowerups, initPowerupHUD, updatePowerupHUD, activePowerups, resetPowerups, pausePowerups, resumePowerups } from "./powerup.js";
+import { drawAndHandlePowerups, drawActiveBuffs, initPowerupHUD, updatePowerupHUD, activePowerups, resetPowerups, pausePowerups, resumePowerups } from "./powerup.js";
 import { updateAchievement, loadAchievements } from "./achievement.js";
 import { initInput, updateInput, input } from "./input.js";
 import { addSessionCoins, saveGameEconomy, resetSessionCoins, sessionCoins, getCosmeticColor } from "./economy.js";
 
 // --- NETWORK IMPORTS ---
-import { initHost, joinGame, broadcastState, sendInputToHost, isHost, setNetworkCallbacks, broadcastStart } from "./network.js";
+import { initHost, joinGame, broadcastState, sendInputToHost, isHost, setNetworkCallbacks, broadcastStart, sendPlayerShoot } from "./network.js";
 
 // --- FIX AUDIO GLOBAL ---
 window.audioManager = { sounds: sounds };
@@ -115,6 +115,9 @@ function gameLoop(timestamp) {
   let timeScale = deltaTime / (1000 / 60);
   if (timeScale > 4) timeScale = 4;
 
+  let worldTimeScale = timeScale;
+  if (player.timeSlowed) worldTimeScale *= 0.2; 
+
   if (paused) {
     requestAnimationFrame(gameLoop);
     return;
@@ -126,6 +129,7 @@ function gameLoop(timestamp) {
       player.sprinting = input.isSprinting;
       updatePlayerMovement(input.keys || {}, canvas, timeScale);
       resolveMapCollision(player);
+    resolveEnemyBlocking(player);
       
       // Client: Send inputs to Host
       if (!isHost && !isSinglePlayer) {
@@ -187,7 +191,7 @@ function gameLoop(timestamp) {
       for (let i = 0; i < bullets.length; i++) {
         const b = bullets[i];
         if (b.active) {
-          b.x += b.dx * timeScale; b.y += b.dy * timeScale;
+          b.x += b.dx * worldTimeScale; b.y += b.dy * worldTimeScale;
           if (checkCollision(b.x - b.width, b.y - b.width, b.width*2, b.width*2)) {
               if (!b.hasHitWall) {
                  b.hasHitWall = true;
@@ -203,7 +207,7 @@ function gameLoop(timestamp) {
       }
 
       for (let i = explosions.length - 1; i >= 0; i--) {
-        explosions[i].life -= 0.05 * timeScale;
+        explosions[i].life -= 0.05 * worldTimeScale;
         if (explosions[i].life <= 0) explosions.splice(i, 1);
       }
       
@@ -216,7 +220,7 @@ function gameLoop(timestamp) {
       };
 
       import("./waves.js").then(module => {
-         updateEnemies(player, canvas, module.zombiesData || zombiesData, projectiles, true, null, timeScale, ctx, effects); 
+         updateEnemies(player, canvas, module.zombiesData || zombiesData, projectiles, true, null, worldTimeScale, ctx, effects); 
          
          const sfxWrapper = { currentTime: 0, play: () => { playSound("explosion", 80); return Promise.resolve(); } };
          const hitWrapper = { currentTime: 0, play: () => { playSound("hitHurt", 50); return Promise.resolve(); } };
@@ -225,12 +229,13 @@ function gameLoop(timestamp) {
          setScore(parseInt(document.getElementById("score").textContent.replace(/\D/g, "")) || 0);
       });
       
-      updateProjectiles(canvas, timeScale);
+      updateProjectiles(canvas, worldTimeScale);
       updateWaveLogic();
       autoReload();
 
       handlePlayerCollisions(player, updateHUD, startDeathSequence);
       handleProjectilePlayerCollision(player, updateHUD, startDeathSequence);
+      handleWhirlwind(player, enemies, effects); // NEW
 
       if (!waveSpawning && enemies.length === 0) {
         if (!waveClearTimeout) {
@@ -299,11 +304,21 @@ function gameLoop(timestamp) {
   // ZOOM APPLICATION
   ctx.save();
   ctx.scale(zoom, zoom); 
+  
+  if (player.timeSlowed) ctx.filter = "grayscale(100%)";
   drawMap(ctx, camera);
+  if (player.timeSlowed) ctx.filter = "none";
   
   if (player.dashActive && !player.isDead) {
       ctx.globalAlpha = 0.4;
-      ctx.fillStyle = player.cosmetics.bodyColor || "cyan"; 
+      
+      let dashColor = "cyan";
+      const bItem = cosmeticRegistry.bodies.find(b => b.id === player.cosmetics.bodyColor);
+      if (bItem) dashColor = bItem.color;
+      else if (player.cosmetics.bodyColor === "green") dashColor = "#00e676";
+      else if (player.cosmetics.bodyColor) dashColor = player.cosmetics.bodyColor; // Fallback if it's already a color code
+
+      ctx.fillStyle = dashColor; 
       ctx.fillRect(Math.round(player.x - camera.x - input.move.x*15), Math.round(player.y - camera.y - input.move.y*15), player.width, player.height);
       ctx.fillRect(Math.round(player.x - camera.x - input.move.x*30), Math.round(player.y - camera.y - input.move.y*30), player.width, player.height);
       ctx.globalAlpha = 1.0;
@@ -354,6 +369,8 @@ function gameLoop(timestamp) {
       }
   }
 
+  if (player.timeSlowed) ctx.filter = "grayscale(100%)";
+
   if (isHost || isSinglePlayer) {
       Object.values(remotePlayers).forEach(rp => {
           drawPlayer(ctx, { ...rp, width: 32, height: 32 }, {x:0,y:0}, {x:0,y:0}, camera);
@@ -403,11 +420,14 @@ function gameLoop(timestamp) {
       if (powerupsCollected >= 20) { updateAchievement("6", 1); }
   });
   
+  if (player.timeSlowed) ctx.filter = "none";
+  
+  drawActiveBuffs(ctx, player, camera, performance.now());
   drawPlayerIndicator(ctx, player, input.aim, camera);
   
   for (let i = floatingTexts.length - 1; i >= 0; i--) {
       const ft = floatingTexts[i];
-      ft.y -= 0.5 * timeScale; ft.life -= 1 * timeScale;
+      ft.y -= 0.5 * worldTimeScale; ft.life -= 1 * worldTimeScale;
       ctx.globalAlpha = Math.max(0, ft.life / 40);
       ctx.fillStyle = ft.color; ctx.font = `${ft.size}px 'Press Start 2P', sans-serif`;
       ctx.strokeStyle = "black"; ctx.lineWidth = 3;
@@ -418,6 +438,14 @@ function gameLoop(timestamp) {
 
   ctx.restore(); ctx.restore(); 
   try { updatePowerupHUD(player); } catch (e) {}
+  
+  // FROST OVERLAY (Visual indication of being frozen/cold)
+  if (player.isFrozen) {
+      drawFrostOverlay(ctx, canvas.width, canvas.height, 1.0);
+  } else if (player.frostbiteStacks > 0) {
+      // Show lighter frost for just stacks
+      drawFrostOverlay(ctx, canvas.width, canvas.height, Math.min(0.6, player.frostbiteStacks * 0.1));
+  }
   
   requestAnimationFrame(gameLoop);
 }
@@ -504,7 +532,15 @@ async function startGame() {
   toggleGameUI(true);
   
   initInput(canvas, { 
-      onShoot: (x, y) => playerShoot(x, y, camera, zoom), 
+      onShoot: (x, y) => {
+          if (!isHost && !isSinglePlayer) {
+              // Send only necessary camera data
+              const safeCamera = { x: camera.x, y: camera.y };
+              sendPlayerShoot(x, y, safeCamera, zoom);
+          } else {
+              playerShoot(x, y, camera, zoom);
+          }
+      }, 
       onReload: playerTryReload 
   });
   

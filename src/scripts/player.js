@@ -21,7 +21,11 @@ function safePlaySound(name, volume = 1.0) {
 export function takeDamage(amount) {
     if (player.immune || player.isDead) return;
 
-    player.health -= amount;
+    // Frostbite Logic: +10% damage per stack
+    const multiplier = 1 + (player.frostbiteStacks * 0.1);
+    const finalDamage = amount * multiplier;
+
+    player.health -= finalDamage;
     player.hurtTime = 15; 
     safePlaySound("hitHurt", 0.8); 
     
@@ -43,7 +47,13 @@ export function takeDamage(amount) {
 
 // --- 2. Shooting Logic ---
 export function playerShoot(targetX, targetY, camera, zoom) {
-    if (!player || player.ammo <= 0 || isReloading) return;
+    if (!player || player.ammo <= 0 || isReloading || player.isFrozen) return;
+
+    // Ageing Curse: 75% slower shooting speed (limit fire rate)
+    const now = performance.now();
+    const minDelay = player.ageingCurse ? 400 : 0; 
+    if (now - (player.lastShootTime || 0) < minDelay) return;
+    player.lastShootTime = now;
 
     player.ammo--;
     updateHUD();
@@ -126,7 +136,52 @@ export function updatePlayerMovement(keys, canvas, timeScale = 1) {
     if (!player) return;
     if (player.hurtTime > 0) player.hurtTime--;
 
+    // --- Record History for Chrono-Thief (Time Skip) ---
+    if (!player.positionHistory) player.positionHistory = [];
+    player.positionHistory.push({ x: player.x, y: player.y });
+    if (player.positionHistory.length > 180) { // Keep ~3 seconds at 60fps
+        player.positionHistory.shift();
+    }
+
+    // --- Ageing Curse Timer ---
+    if (player.ageingCurse) {
+        player.ageingTimer -= timeScale;
+        if (player.ageingTimer <= 0) player.ageingCurse = false;
+    }
+
+    // --- FROZEN LOGIC (Deep Freeze) ---
+    if (player.isFrozen) {
+        player.freezeTimer -= timeScale;
+        if (player.freezeTimer <= 0) {
+            player.isFrozen = false;
+        } else {
+            // Player cannot move while frozen
+            updateStaminaBar();
+            return;
+        }
+    }
+
     let speedMultiplier = 1;
+
+    // --- SLIDING LOGIC (Flash Freeze) ---
+    if (player.isSliding) {
+        player.slideTimer -= timeScale;
+        if (player.slideTimer <= 0) {
+            player.isSliding = false;
+        } else {
+            // Uncontrollable slide
+            let moveSpeed = (player.speed || 5);
+            // Sliding is faster than walking but uncontrollable
+            let nextX = player.x + player.slideDir.x * moveSpeed * 1.5 * timeScale;
+            let nextY = player.y + player.slideDir.y * moveSpeed * 1.5 * timeScale;
+            
+            player.x = Math.max(0, Math.min(worldWidth - player.width, nextX));
+            player.y = Math.max(0, Math.min(worldHeight - player.height, nextY));
+            
+            updateStaminaBar();
+            return; // Skip normal movement
+        }
+    }
 
     // Dash
     if (player.dashTime > 0) {
@@ -134,6 +189,8 @@ export function updatePlayerMovement(keys, canvas, timeScale = 1) {
         player.dashTime--;
         player.dashActive = true; 
     } else {
+        if (player.ageingCurse) speedMultiplier *= 0.5; // Ageing Curse Penalty
+
         player.dashActive = false;
         if (player.dashCooldown > 0) player.dashCooldown--;
 
@@ -198,7 +255,7 @@ export function resetPlayer(canvas) {
   player.y = canvas.height - player.height - 20;
   player.health = player.maxHealth;
   player.ammo = player.magazineSize;
-  player.reserveAmmo = 1000;
+  player.reserveAmmo = 1250;
   player.stamina = player.maxStamina;
   player.sprinting = false;
   player.dashCooldown = 0;

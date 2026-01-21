@@ -31,9 +31,7 @@
   {
     "wave": 5,
     "zombies": [
-      { "type": "tank", "count": 4 },
-      { "type": "summoner", "count": 2 },
-      { "type": "thrower", "count": 2 }
+      { "type": "Frost-Core Construct", "count": 1 }
     ]
   },
   {
@@ -107,14 +105,14 @@
   {
     "wave": 15,
     "zombies": [
-      { "type": "Juggernaut", "count": 2 },
-      { "type": "speed", "count": 20 }
+      { "type": "The Chrono-Thief", "count": 1 }
     ]
   },
   {
     "wave": 16,
     "zombies": [
       { "type": "armored", "count": 6 },
+      { "type": "Juggernaut", "count": 1 },
       { "type": "giant", "count": 2 },
       { "type": "Spitter", "count": 8 }
     ]
@@ -122,8 +120,9 @@
   {
     "wave": 17,
     "zombies": [
-      { "type": "Splitter", "count": 6 },
-      { "type": "summoner", "count": 5 },
+      { "type": "Splitter", "count": 5 },
+      { "type": "Juggernaut", "count": 2 },
+      { "type": "summoner", "count": 4 },
       { "type": "Stalker", "count": 6 }
     ]
   },

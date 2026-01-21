@@ -20,7 +20,9 @@ export const cosmeticRegistry = {
     { id: "rich", name: "High Roller", type: "buyable", price: 250 }, // NEW: $ $
     { id: "cyclops", name: "Cyclops", type: "achievement", reqId: "2", hint: "Kill 50 Enemies" },
     { id: "white", name: "Herobrine", type: "achievement", reqId: "3", hint: "Fire 1000 Bullets" },
-    { id: "sunglasses", name: "Cool", type: "achievement", reqId: "5", hint: "Collect a Powerup" }
+    { id: "sunglasses", name: "Cool", type: "achievement", reqId: "5", hint: "Collect a Powerup" },
+    { id: "pixel", name: "8-Bit", type: "buyable", price: 100 }, // NEW
+    { id: "glasses", name: "Scholar", type: "buyable", price: 75 } // NEW
   ],
   hats: [
     { id: "none", name: "None", type: "free" },
@@ -30,9 +32,8 @@ export const cosmeticRegistry = {
     { id: "wizard", name: "Wizard Hat", type: "free" },
     { id: "cowboy", name: "Sheriff", type: "buyable", price: 150 },
     { id: "tophat", name: "Gentleman", type: "buyable", price: 250 },
-    { id: "helmet", name: "Helmet", type: "achievement", reqId: "4", hint: "Reach Wave 8" },
-    { id: "crown", name: "King", type: "achievement", reqId: "1", hint: "Win without Powerups" },
-    { id: "halo", name: "Angel", type: "achievement", reqId: "1", hint: "Win without Powerups" }
+    { id: "pirate", name: "Captain", type: "buyable", price: 200 }, // NEW
+    { id: "viking", name: "Viking", type: "buyable", price: 300 }, // NEW
   ],
   indicators: [
     { id: "dot", name: "Simple Dot", type: "free" },
@@ -106,6 +107,15 @@ export function drawPlayer(ctx, player, aimInput, moveInput, camera) {
 
   drawEyes(ctx, x, y, w, h, player.cosmetics.eyeStyle, aimInput, faceDir, player.x, player.y, camera, bodyColor);
   drawHat(ctx, x, y, w, h, player.cosmetics.hatStyle);
+
+  // FROZEN VISUAL EFFECT
+  if (player.isFrozen) {
+      ctx.fillStyle = "rgba(0, 229, 255, 0.5)"; // Semi-transparent cyan
+      ctx.fillRect(x - 2, y - 2, w + 4, h + 4); // Encase player
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+  }
 }
 
 export function drawPlayerIndicator(ctx, player, aimInput, camera) {
@@ -217,6 +227,55 @@ function drawEyes(ctx, x, y, w, h, style, aim, moveDir, px, py, cam, bodyColor) 
         ctx.textBaseline = "middle";
         ctx.fillText("$", leftEyeBaseX + 3, eyeY + 3);
         ctx.fillText("$", rightEyeBaseX + 3, eyeY + 3);
+    
+    } else if (style === "glasses") { // Scholar Glasses
+        // 1. Lens Tint (Light blue/white)
+        ctx.fillStyle = "rgba(200, 230, 255, 0.4)";
+        ctx.fillRect(leftEyeBaseX - 1, eyeY - 1, 8, 8);
+        ctx.fillRect(rightEyeBaseX - 1, eyeY - 1, 8, 8);
+
+        // 2. Eyes (Behind the lenses)
+        ctx.fillStyle = "black";
+        ctx.fillRect(leftEyeBaseX + 2 + pxOff, eyeY + 2 + pyOff, 2, 2);
+        ctx.fillRect(rightEyeBaseX + 2 + pxOff, eyeY + 2 + pyOff, 2, 2);
+
+        // 3. Frames (Sleek grey)
+        ctx.strokeStyle = "#444";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(leftEyeBaseX - 1, eyeY - 1, 8, 8);
+        ctx.strokeRect(rightEyeBaseX - 1, eyeY - 1, 8, 8);
+        // Bridge
+        ctx.beginPath(); ctx.moveTo(leftEyeBaseX + 7, eyeY + 3); ctx.lineTo(rightEyeBaseX - 1, eyeY + 3); ctx.stroke();
+        // Poles (Temples)
+        ctx.beginPath(); 
+        ctx.moveTo(leftEyeBaseX - 1, eyeY + 3); ctx.lineTo(x, eyeY + 3); // Left pole
+        ctx.moveTo(rightEyeBaseX + 7, eyeY + 3); ctx.lineTo(x + w, eyeY + 3); // Right pole
+        ctx.stroke();
+        
+        // 4. Glass Reflection (White streak)
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(leftEyeBaseX + 1, eyeY); ctx.lineTo(leftEyeBaseX + 4, eyeY + 3);
+        ctx.moveTo(rightEyeBaseX + 1, eyeY); ctx.lineTo(rightEyeBaseX + 4, eyeY + 3);
+        ctx.stroke();
+
+    } else if (style === "pixel") { // 8-Bit
+        ctx.fillStyle = "black";
+        // Left Eye Frame
+        ctx.fillRect(leftEyeBaseX, eyeY, 6, 6);
+        // Right Eye Frame
+        ctx.fillRect(rightEyeBaseX, eyeY, 6, 6);
+        
+        // Tracking Pupils (White pixel)
+        ctx.fillStyle = "white";
+        // Clamp offsets to pixel grid
+        const pixOffX = Math.round(Math.max(-2, Math.min(2, pxOff)));
+        const pixOffY = Math.round(Math.max(-2, Math.min(2, pyOff)));
+        
+        ctx.fillRect(leftEyeBaseX + 2 + pixOffX, eyeY + 2 + pixOffY, 2, 2);
+        ctx.fillRect(rightEyeBaseX + 2 + pixOffX, eyeY + 2 + pixOffY, 2, 2);
+
     // --- NEW FACES END ---
 
     } else if (style === "white") {
@@ -268,6 +327,42 @@ function drawHat(ctx, x, y, w, h, style) {
         ctx.fillRect(x + 2, topY - 14, w - 4, 14); ctx.strokeRect(x + 2, topY - 14, w - 4, 14);
         ctx.fillRect(x - 4, topY - 2, w + 8, 4); ctx.strokeRect(x - 4, topY - 2, w + 8, 4);
         ctx.fillStyle = "#d32f2f"; ctx.fillRect(x + 2, topY - 4, w - 4, 2);
+    } else if (style === "pirate") {
+        // 1. Red Bandana Base (Connects to head)
+        ctx.fillStyle = "#d32f2f"; 
+        ctx.fillRect(x, topY, w, 6); // Sits on forehead
+        
+        // 2. The Hat Main Body (Black Tricorne)
+        ctx.fillStyle = "#1a1a1a"; ctx.strokeStyle = "#ffd700"; // Gold trim
+        ctx.lineWidth = 1;
+        
+        ctx.beginPath();
+        // Brim starts low and wide
+        ctx.moveTo(x - 6, topY + 2); 
+        // Curves up to the peak
+        ctx.quadraticCurveTo(cx, topY - 18, x + w + 6, topY + 2);
+        // Curves down to center (the tricorne dip)
+        ctx.quadraticCurveTo(cx, topY - 2, x - 6, topY + 2);
+        ctx.fill();
+        ctx.stroke(); // Gold rim
+
+        // 3. Skull & Crossbones (Simplified)
+        ctx.fillStyle = "white";
+        ctx.beginPath(); ctx.arc(cx, topY - 6, 4, 0, Math.PI*2); ctx.fill(); // Skull
+        ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+        ctx.beginPath(); 
+        ctx.moveTo(cx - 4, topY - 4); ctx.lineTo(cx + 4, topY - 8);
+        ctx.moveTo(cx + 4, topY - 4); ctx.lineTo(cx - 4, topY - 8);
+        ctx.stroke();
+
+    } else if (style === "viking") {
+        ctx.fillStyle = "#bdbdbd"; ctx.strokeStyle = "#616161";
+        // Helmet bowl
+        ctx.beginPath(); ctx.arc(cx, topY + 4, w/2 + 2, Math.PI, 0); ctx.fill(); ctx.stroke();
+        // Horns
+        ctx.fillStyle = "#fff8e1"; ctx.strokeStyle = "#f57f17";
+        ctx.beginPath(); ctx.moveTo(x, topY); ctx.quadraticCurveTo(x - 8, topY - 8, x - 4, topY - 16); ctx.lineTo(x + 2, topY - 4); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + w, topY); ctx.quadraticCurveTo(x + w + 8, topY - 8, x + w + 4, topY - 16); ctx.lineTo(x + w - 2, topY - 4); ctx.fill(); ctx.stroke();
     } else if (style === "helmet") {
         ctx.fillStyle = "#556b2f"; ctx.strokeStyle = "#3e4f22";
         ctx.beginPath(); ctx.arc(cx, topY + 6, w/2 + 1, Math.PI, 0); ctx.fill(); ctx.stroke();
