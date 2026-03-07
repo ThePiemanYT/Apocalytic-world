@@ -1,8 +1,10 @@
 /* src/scripts/ui.js */
-import { player, score, recalcPlayerStats, gameRunning, saveCosmetics, setIsSinglePlayer } from "./state.js";
+import { player, score, recalcPlayerStats, gameRunning, saveCosmetics, setIsSinglePlayer, worldWidth, worldHeight, showMinimap } from "./state.js";
 import { cosmeticRegistry, isUnlocked, drawPlayer, drawPlayerIndicator, getBulletStyleDef } from "./cosmetics.js";
 import { playSound, setMusicVolume, setSFXVolume, toggleMusic, toggleSFX } from "./audio.js";
-import { totalCoins, buyCosmetic, hasCosmetic } from "./economy.js"; 
+import { totalCoins, buyCosmetic, hasCosmetic, buyMetaUpgrade, getMetaUpgradeCost, refundMetaUpgrades, getTotalCoins } from "./economy.js"; 
+import { enemies } from "./enemy.js";
+import { powerups } from "./powerup.js";
 import { initHost, joinGame, broadcastStart, setNetworkCallbacks } from "./network.js";
 
 const scoreDisplay = document.getElementById("score");
@@ -17,8 +19,16 @@ let bossContainer, bossFill, bossLabel, bossWarning;
 let mpModal = null;
 let lobbyPlayers = [];
 
+window.updateMinimapToggle = (enabled) => {
+    import("./state.js").then(m => m.setShowMinimap(enabled));
+    playSound("select");
+};
+
 export function initUI() {
   [scoreDisplay, waveDisplay, healthBarContainer].forEach(el => { if (el) el.style.pointerEvents = "none"; });
+
+  const mmToggle = document.getElementById("minimapToggle");
+  if (mmToggle) mmToggle.checked = showMinimap;
 
   if (!document.getElementById("ammoDisplay")) {
     ammoDisplay.id = "ammoDisplay";
@@ -52,6 +62,34 @@ export function initUI() {
       document.body.appendChild(btn);
   }
 
+  if (!document.getElementById("metaShopBtn")) {
+      const btn = document.createElement("button");
+      btn.id = "metaShopBtn";
+      btn.innerHTML = `<svg viewBox="0 0 24 24" width="32" height="32" fill="white" stroke="black" stroke-width="1.5"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>`;
+      Object.assign(btn.style, {
+          position: "absolute", top: "80px", right: "20px", background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)",
+          borderRadius: "8px", cursor: "pointer", padding: "8px", zIndex: "10000", display: "flex", alignItems: "center", justifyContent: "center"
+      });
+      btn.onmouseenter = () => btn.style.background = "rgba(255,255,255,0.2)";
+      btn.onmouseleave = () => btn.style.background = "rgba(0,0,0,0.6)";
+      btn.onclick = () => { playSound("select"); openMetaShop(); };
+      document.body.appendChild(btn);
+  }
+
+  if (!document.getElementById("statsBtn")) {
+      const btn = document.createElement("button");
+      btn.id = "statsBtn";
+      btn.innerHTML = `<svg viewBox="0 0 24 24" width="32" height="32" fill="white" stroke="black" stroke-width="1.5"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>`;
+      Object.assign(btn.style, {
+          position: "absolute", top: "140px", right: "20px", background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.5)",
+          borderRadius: "8px", cursor: "pointer", padding: "8px", zIndex: "10000", display: "flex", alignItems: "center", justifyContent: "center"
+      });
+      btn.onmouseenter = () => btn.style.background = "rgba(255,255,255,0.2)";
+      btn.onmouseleave = () => btn.style.background = "rgba(0,0,0,0.6)";
+      btn.onclick = () => { playSound("select"); openPanel('statsPanel'); };
+      document.body.appendChild(btn);
+  }
+
   staminaBar.innerHTML = ''; 
   Object.assign(staminaFill.style, { height: "100%", width: "100%", background: "linear-gradient(90deg, #80dfff, #4fc3f7)" });
   staminaBar.appendChild(staminaFill);
@@ -61,48 +99,30 @@ export function initUI() {
   setupMultiplayerMenu();
 }
 
-// --- FIXED MULTIPLAYER MENU SETUP ---
 export function setupMultiplayerMenu() {
-    // FIX: Target the class, not the ID, because index.html uses <div class="menu-main-buttons">
     const btnContainer = document.querySelector(".menu-main-buttons");
     if (!btnContainer) return;
-
-    if (document.getElementById("mpBtn")) return; // Prevent duplicates
-
+    if (document.getElementById("mpBtn")) return; 
     const mpBtn = document.createElement("button");
     mpBtn.id = "mpBtn";
     mpBtn.textContent = "Multiplayer";
-    
-    mpBtn.onclick = () => {
-        playSound("select");
-        openMultiplayerModal();
-    };
-
-    // Insert after "Start"
+    mpBtn.onclick = () => { playSound("select"); openMultiplayerModal(); };
     const startBtn = btnContainer.querySelector("button");
-    if (startBtn && startBtn.nextSibling) {
-        btnContainer.insertBefore(mpBtn, startBtn.nextSibling);
-    } else {
-        btnContainer.appendChild(mpBtn);
-    }
+    if (startBtn && startBtn.nextSibling) btnContainer.insertBefore(mpBtn, startBtn.nextSibling);
+    else btnContainer.appendChild(mpBtn);
 }
 
 function openMultiplayerModal() {
     document.getElementById("menu").style.display = "none";
-    document.getElementById("wardrobeBtn").style.display = "none";
-
+    const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none";
+    const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "none";
+    const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "none";
     if (!mpModal) {
-        mpModal = document.createElement("div");
-        mpModal.id = "mpModal";
-        Object.assign(mpModal.style, {
-            position: "fixed", inset: "0", background: "rgba(0,0,0,0.95)", zIndex: "20000",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            fontFamily: "'Press Start 2P', sans-serif", color: "white"
-        });
+        mpModal = document.createElement("div"); mpModal.id = "mpModal";
+        Object.assign(mpModal.style, { position: "fixed", inset: "0", background: "rgba(0,0,0,0.95)", zIndex: "20000", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'Press Start 2P', sans-serif", color: "white" });
         document.body.appendChild(mpModal);
     }
-    mpModal.style.display = "flex";
-    renderMPSelection();
+    mpModal.style.display = "flex"; renderMPSelection();
 }
 
 function renderMPSelection() {
@@ -120,7 +140,6 @@ function renderMPSelection() {
         </div>
         <button id="mpBackBtn" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-family:inherit; margin-top:20px;">&lt; BACK TO MENU</button>
     `;
-
     document.getElementById("hostOption").onclick = () => { playSound("select"); setIsSinglePlayer(false); renderHostLobby(); };
     document.getElementById("joinOption").onclick = () => { playSound("select"); setIsSinglePlayer(false); renderJoinScreen(); };
     document.getElementById("mpBackBtn").onclick = () => { closeMultiplayerModal(); };
@@ -128,7 +147,6 @@ function renderMPSelection() {
 
 function renderHostLobby() {
     lobbyPlayers = ["You (Host)"];
-    
     mpModal.innerHTML = `
         <h2 style="color:#ffe066;">LOBBY</h2>
         <div style="background:rgba(255,255,255,0.1); padding:20px; border-radius:8px; margin:20px 0; text-align:center;">
@@ -144,44 +162,19 @@ function renderHostLobby() {
         <button id="startMatchBtn" style="padding:15px 30px; font-size:16px; background:#4CAF50; color:white; border:none; cursor:pointer; border-radius:4px; opacity:0.5; pointer-events:none;">START MATCH</button>
         <button id="mpBackBtn" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-family:inherit; margin-top:15px;">CANCEL</button>
     `;
-
     initHost((id) => {
         const codeDisplay = document.getElementById("roomCodeDisplay");
-        if(codeDisplay) {
-            codeDisplay.textContent = id;
-            codeDisplay.style.color = "#69f0ae";
-            const startBtn = document.getElementById("startMatchBtn");
-            startBtn.style.opacity = "1";
-            startBtn.style.pointerEvents = "auto";
-        }
+        if(codeDisplay) { codeDisplay.textContent = id; codeDisplay.style.color = "#69f0ae"; const startBtn = document.getElementById("startMatchBtn"); startBtn.style.opacity = "1"; startBtn.style.pointerEvents = "auto"; }
     });
-
-    setNetworkCallbacks((playerId) => { 
-        lobbyPlayers.push(`Player (${playerId.substr(0,4)})`);
-        updateLobbyListUI();
-        playSound("blipSelect");
-    }, null);
-
-    document.getElementById("startMatchBtn").onclick = () => {
-        playSound("powerUp");
-        mpModal.style.display = "none";
-        broadcastStart();
-        if(window.startGame) window.startGame();
-    };
-    
+    setNetworkCallbacks((playerId) => { lobbyPlayers.push(`Player (${playerId.substr(0,4)})`); updateLobbyListUI(); playSound("blipSelect"); }, null);
+    document.getElementById("startMatchBtn").onclick = () => { playSound("powerUp"); mpModal.style.display = "none"; broadcastStart(); if(window.startGame) window.startGame(); };
     document.getElementById("mpBackBtn").onclick = () => { location.reload(); };
 }
 
 function updateLobbyListUI() {
-    const list = document.getElementById("lobbyList");
-    if(!list) return;
+    const list = document.getElementById("lobbyList"); if(!list) return;
     list.innerHTML = "";
-    lobbyPlayers.forEach(p => {
-        const div = document.createElement("div");
-        div.textContent = "> " + p;
-        div.style.color = p.includes("Host") ? "#4CAF50" : "white";
-        list.appendChild(div);
-    });
+    lobbyPlayers.forEach(p => { const div = document.createElement("div"); div.textContent = "> " + p; div.style.color = p.includes("Host") ? "#4CAF50" : "white"; list.appendChild(div); });
 }
 
 function renderJoinScreen() {
@@ -194,84 +187,51 @@ function renderJoinScreen() {
         <button id="connectBtn" style="padding:15px 30px; font-size:16px; background:#009688; color:white; border:none; cursor:pointer; border-radius:4px;">CONNECT</button>
         <button id="mpBackBtn" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-family:inherit; margin-top:15px;">CANCEL</button>
     `;
-
     document.getElementById("connectBtn").onclick = () => {
         const id = document.getElementById("joinInput").value.trim();
         if (!id) { document.getElementById("joinStatus").textContent = "Please enter an ID"; return; }
-        
-        document.getElementById("joinStatus").textContent = "Connecting...";
-        document.getElementById("joinStatus").style.color = "yellow";
-        
-        joinGame(id, () => {
-            renderWaitingScreen();
-        });
+        document.getElementById("joinStatus").textContent = "Connecting..."; document.getElementById("joinStatus").style.color = "yellow";
+        joinGame(id, () => { renderWaitingScreen(); });
     };
-    
     document.getElementById("mpBackBtn").onclick = () => { renderMPSelection(); };
 }
 
 function renderWaitingScreen() {
-    mpModal.innerHTML = `
-        <h2 style="color:#4fc3f7;">CONNECTED!</h2>
-        <div style="font-size:14px; margin:20px; color:#aaa; text-align:center; line-height:1.6;">Successfully joined.<br>Waiting for host to start...</div>
-        <div class="loader" style="margin:20px auto; width:40px; height:40px; border:4px solid #333; border-top:4px solid white; border-radius:50%; animation: spin 1s linear infinite;"></div>
-        <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-    `;
-    setNetworkCallbacks(null, () => {
-        mpModal.style.display = "none";
-        if(window.startGame) window.startGame();
-    });
+    mpModal.innerHTML = `<h2 style="color:#4fc3f7;">CONNECTED!</h2><div style="font-size:14px; margin:20px; color:#aaa; text-align:center; line-height:1.6;">Successfully joined.<br>Waiting for host to start...</div><div class="loader" style="margin:20px auto; width:40px; height:40px; border:4px solid #333; border-top:4px solid white; border-radius:50%; animation: spin 1s linear infinite;"></div><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>`;
+    setNetworkCallbacks(null, () => { mpModal.style.display = "none"; if(window.startGame) window.startGame(); });
 }
 
 function closeMultiplayerModal() {
     if(mpModal) mpModal.style.display = "none";
     document.getElementById("menu").style.display = "flex";
     const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex";
-    setIsSinglePlayer(true); // Reset to SP
-    playSound("select");
+    const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "flex";
+    const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "flex";
+    setIsSinglePlayer(true); playSound("select");
 }
 
 function initBossUI() {
-    bossContainer = document.createElement("div");
-    bossContainer.id = "bossHealthBar";
-    Object.assign(bossContainer.style, {
-        position: "fixed", top: "80px", left: "50%", transform: "translateX(-50%)",
-        width: "600px", maxWidth: "90%", height: "24px", 
-        background: "rgba(0,0,0,0.8)", border: "3px solid #fff", borderRadius: "6px",
-        display: "none", zIndex: "900", boxShadow: "0 0 15px rgba(0,0,0,0.8)",
-        pointerEvents: "none"
-    });
-    bossFill = document.createElement("div");
-    Object.assign(bossFill.style, { width: "100%", height: "100%", background: "linear-gradient(90deg, #d32f2f, #ff1744)", transition: "width 0.2s ease-out" });
-    bossLabel = document.createElement("div");
-    Object.assign(bossLabel.style, {
-        position: "absolute", width: "100%", textAlign: "center", color: "#fff", fontFamily: "'Press Start 2P', sans-serif", fontSize: "14px", top: "-25px", textShadow: "2px 2px 0 #000", letterSpacing: "1px"
-    });
-    bossWarning = document.createElement("div");
-    Object.assign(bossWarning.style, {
-        position: "fixed", top: "35%", left: "50%", transform: "translate(-50%, -50%)", color: "#ff1744", fontFamily: "'Press Start 2P', sans-serif", fontSize: "48px", textShadow: "4px 4px 0 #000", display: "none", zIndex: "2000", textAlign: "center", pointerEvents: "none"
-    });
+    bossContainer = document.createElement("div"); bossContainer.id = "bossHealthBar";
+    Object.assign(bossContainer.style, { position: "fixed", top: "80px", left: "50%", transform: "translateX(-50%)", width: "600px", maxWidth: "90%", height: "24px", background: "rgba(0,0,0,0.8)", border: "3px solid #fff", borderRadius: "6px", display: "none", zIndex: "900", boxShadow: "0 0 15px rgba(0,0,0,0.8)", pointerEvents: "none" });
+    bossFill = document.createElement("div"); Object.assign(bossFill.style, { width: "100%", height: "100%", background: "linear-gradient(90deg, #d32f2f, #ff1744)", transition: "width 0.2s ease-out" });
+    bossLabel = document.createElement("div"); Object.assign(bossLabel.style, { position: "absolute", width: "100%", textAlign: "center", color: "#fff", fontFamily: "'Press Start 2P', sans-serif", fontSize: "14px", top: "-25px", textShadow: "2px 2px 0 #000", letterSpacing: "1px" });
+    bossWarning = document.createElement("div"); Object.assign(bossWarning.style, { position: "fixed", top: "35%", left: "50%", transform: "translate(-50%, -50%)", color: "#ff1744", fontFamily: "'Press Start 2P', sans-serif", fontSize: "48px", textShadow: "4px 4px 0 #000", display: "none", zIndex: "2000", textAlign: "center", pointerEvents: "none" });
     bossContainer.appendChild(bossFill); bossContainer.appendChild(bossLabel);
     document.body.appendChild(bossContainer); document.body.appendChild(bossWarning);
 }
 
 export function showBossWarning(name) {
     bossWarning.innerHTML = `⚠ WARNING ⚠<br><span style="font-size:24px;color:white;display:block;margin-top:20px;">${name} HAS AWOKEN</span>`;
-    bossWarning.style.display = "block";
-    playSound("game-over"); 
+    bossWarning.style.display = "block"; playSound("game-over"); 
+    if (window.onBossSpawned) window.onBossSpawned();
     let blinks = 0; bossWarning.style.opacity = "1";
-    const interval = setInterval(() => {
-        bossWarning.style.opacity = bossWarning.style.opacity === "0" ? "1" : "0";
-        blinks++;
-        if(blinks > 7) { clearInterval(interval); bossWarning.style.display = "none"; bossWarning.style.opacity = "1"; }
-    }, 350);
+    const interval = setInterval(() => { bossWarning.style.opacity = bossWarning.style.opacity === "0" ? "1" : "0"; blinks++; if(blinks > 7) { clearInterval(interval); bossWarning.style.display = "none"; bossWarning.style.opacity = "1"; } }, 350);
 }
 
 export function updateBossBar(boss) {
     if (!bossContainer) return;
     if (bossContainer.style.display !== "block") { bossContainer.style.display = "block"; bossLabel.textContent = boss.type.toUpperCase(); }
-    const pct = Math.max(0, (boss.health / boss.maxHealth) * 100);
-    bossFill.style.width = pct + "%";
+    const pct = Math.max(0, (boss.health / boss.maxHealth) * 100); bossFill.style.width = pct + "%";
 }
 
 export function hideBossBar() { if (bossContainer) bossContainer.style.display = "none"; }
@@ -284,8 +244,12 @@ export function toggleGameUI(visible) {
     if (ammoDisplay) ammoDisplay.style.display = displayVal;
     if (staminaBar) staminaBar.style.display = displayVal;
     const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = visible ? "none" : "flex";
+    const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = visible ? "none" : "flex";
+    const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = visible ? "none" : "flex";
     if (!visible) hideBossBar();
 }
+
+let lastScore = 0; let lastWave = -1;
 
 export function updateHUD() {
   const percent = Math.max(0, player.health) / player.maxHealth;
@@ -297,9 +261,9 @@ export function updateHUD() {
   }
   ammoDisplay.textContent = `Ammo: ${player.ammo} / ${player.reserveAmmo}`;
   staminaFill.style.width = (player.stamina / player.maxStamina * 100) + "%";
-  if(scoreDisplay) scoreDisplay.textContent = "Score: " + score;
+  if(scoreDisplay) { if (score !== lastScore) { scoreDisplay.textContent = "Score: " + score; scoreDisplay.classList.remove("ui-pop"); void scoreDisplay.offsetWidth; scoreDisplay.classList.add("ui-pop"); lastScore = score; } }
 }
-export function updateWaveUI(currentWave) { if (waveDisplay) waveDisplay.textContent = "Wave: " + (currentWave + 1); }
+export function updateWaveUI(currentWave) { if (waveDisplay) { if (currentWave !== lastWave) { waveDisplay.textContent = "Wave: " + (currentWave + 1); waveDisplay.classList.remove("ui-pop"); void waveDisplay.offsetWidth; waveDisplay.classList.add("ui-pop"); lastWave = currentWave; } } }
 
 let panelStack = []; let helpData = null; let aboutData = null;
 
@@ -307,16 +271,111 @@ export function openPanel(id) {
   document.querySelectorAll(".menuPanel").forEach(p => { p.style.display = "none"; p.setAttribute("inert", ""); });
   const menu1 = document.getElementById("menu1"); if (menu1) menu1.style.display = "none";
   const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none";
+  const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "none";
+  const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "none";
+  if (id === 'statsPanel') updateStatsUI();
   const el = document.getElementById(id);
   if (el) { el.style.display = "flex"; el.removeAttribute("inert"); panelStack.push(id); if (id === "helpPanel") loadHelpData(); if (id === "aboutPanel") loadAboutData(); }
   playSound("select");
+}
+
+export function updateStatsUI() {
+    import("./state.js").then(m => {
+        const stats = m.lifetimeStats;
+        const mapping = { "statHighScore": stats.highScore || 0, "statTotalKills": stats.totalKills || 0, "statBulletsFired": stats.totalBulletsFired || 0, "statTotalDeaths": stats.totalDeaths || 0, "statWavesSurvived": stats.totalWavesSurvived || 0, "statTotalCoins": stats.totalCoinsEarned || 0 };
+        for (const [id, val] of Object.entries(mapping)) { const el = document.getElementById(id); if (el) el.textContent = val.toLocaleString(); }
+    });
+}
+
+export function updateMetaShop() {
+    const coins = getTotalCoins();
+    const metaCoins = document.getElementById("metaShopCoins");
+    if (metaCoins) metaCoins.textContent = `Coins: ${coins}`;
+}
+
+window.purchaseMeta = (type) => {
+    if (buyMetaUpgrade(type, player)) { playSound("select"); recalcPlayerStats(); updateMetaShop(); }
+};
+
+export function openMetaShop() {
+    let modal = document.getElementById("metaShopModal");
+    if (!modal) {
+        modal = document.createElement("div"); modal.id = "metaShopModal";
+        Object.assign(modal.style, { position: "fixed", inset: "0", background: "rgba(0,0,0,0.95)", display: "none", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: "10001", fontFamily: "'Press Start 2P', sans-serif", color: "white" });
+        modal.innerHTML = `
+            <div style="display:flex; flex-direction:column; width: 500px; max-width:90%; background:rgba(255,255,255,0.05); padding:30px; border-radius:12px; border: 2px solid rgba(255,224,102,0.3);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px;">
+                    <h2 style="color: #ffe066; margin:0; font-size:20px; text-shadow: 2px 2px 0 #000;">UPGRADES</h2>
+                    <div id="metaShopCoins" style="color:gold; font-size:14px; background:rgba(0,0,0,0.4); padding:8px 12px; border-radius:6px; border:1px solid rgba(255,215,0,0.3);">Coins: 0</div>
+                </div>
+                <div id="metaUpgradeGrid" style="display: flex; flex-direction:column; gap: 12px;"></div>
+                <div style="display:flex; gap:10px; margin-top:25px;">
+                    <button id="refundUpgradesBtn" style="flex:1; padding: 15px; background:#d32f2f; border:none; color:white; cursor:pointer; font-family:inherit; border-radius:8px; font-size:12px;">Refund All</button>
+                    <button id="closeMetaShopBtn" style="flex:2; padding: 15px; background:#4CAF50; border:none; color:white; cursor:pointer; font-family:inherit; border-radius:8px; font-size:14px; transition: filter 0.2s;">Save & Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById("refundUpgradesBtn").onclick = () => {
+            showConfirmModal("Refund all upgrades and get your coins back?", () => {
+                if (refundMetaUpgrades(player)) { playSound("select"); recalcPlayerStats(); openMetaShop(); }
+            });
+        };
+        const closeBtn = document.getElementById("closeMetaShopBtn");
+        closeBtn.onmouseenter = () => closeBtn.style.filter = "brightness(1.2)";
+        closeBtn.onmouseleave = () => closeBtn.style.filter = "brightness(1.0)";
+        closeBtn.onclick = () => { modal.style.display = "none"; document.getElementById("menu").style.display = "flex"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex"; const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "flex"; const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "flex"; playSound("select"); };
+    }
+    document.getElementById("metaShopCoins").textContent = `Coins: ${getTotalCoins()}`;
+    document.getElementById("menu").style.display = "none";
+    const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none";
+    const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "none";
+    const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "none";
+    const grid = document.getElementById("metaUpgradeGrid"); grid.innerHTML = "";
+    const upgrades = [
+        { key: "health", label: "Nano-Armor", hint: "+2 Max HP", cost: 250 },
+        { key: "speed", label: "Adrenaline", hint: "+5% Speed", cost: 300 },
+        { key: "damage", label: "Impact Rounds", hint: "+20% Damage", cost: 500 },
+        { key: "magazine", label: "High-Cap Mag", hint: "+2 Mag Size", cost: 200 },
+        { key: "reserve", label: "Ammo Satchel", hint: "+25 Max Ammo", cost: 200 }
+    ];
+    upgrades.forEach(u => {
+        const row = document.createElement("div"); Object.assign(row.style, { display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.08)", padding: "12px 18px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)" });
+        const info = document.createElement("div"); info.innerHTML = `<div style="font-size:12px; color:cyan; margin-bottom:4px; text-shadow: 1px 1px 0 #000;">${u.label}</div><div style="font-size:9px; color:#aaa;">${u.hint}</div>`;
+        const controls = document.createElement("div"); Object.assign(controls.style, { display: "flex", gap: "15px", alignItems: "center" });
+        const levelDisp = document.createElement("div"); Object.assign(levelDisp.style, { fontSize: "10px", width: "70px", textAlign: "center", color: "#eee" });
+        const buyBtn = document.createElement("button"); Object.assign(buyBtn.style, { padding: "8px 12px", fontSize: "10px", background: "rgba(255,255,255,0.1)", color: "white", border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer", fontFamily: "inherit", borderRadius: "4px", minWidth: "100px" });
+        const updateUI = () => {
+            const lvl = player.metaUpgrades[u.key] || 0; const cost = getMetaUpgradeCost(u.key, lvl); levelDisp.textContent = `Lvl: ${lvl}/5`;
+            if (lvl >= 5) { buyBtn.textContent = "MAXED"; buyBtn.style.background = "rgba(0,0,0,0.3)"; buyBtn.style.color = "#666"; buyBtn.style.cursor = "default"; buyBtn.onclick = null; }
+            else {
+                buyBtn.textContent = `BUY: ${cost}C`; const canAfford = getTotalCoins() >= cost; buyBtn.style.color = canAfford ? "#ffd700" : "#d32f2f";
+                buyBtn.onclick = (e) => {
+                    if (buyMetaUpgrade(u.key, player)) { playSound("powerUp"); recalcPlayerStats(); document.getElementById("metaShopCoins").textContent = `Coins: ${getTotalCoins()}`; row.classList.remove("purchase-flash"); void row.offsetWidth; row.classList.add("purchase-flash"); const burst = document.createElement("div"); burst.className = "coin-burst"; burst.textContent = `-${cost}`; burst.style.left = `${e.clientX}px`; burst.style.top = `${e.clientY}px`; document.body.appendChild(burst); setTimeout(() => burst.remove(), 600); updateUI(); }
+                    else { playSound("hitHurt"); }
+                };
+            }
+        };
+        updateUI(); controls.append(levelDisp, buyBtn); row.append(info, controls); grid.append(row);
+    });
+    modal.style.display = "flex";
+}
+
+export function drawMinimap(ctx) {
+    if (!gameRunning || player.isDead || !showMinimap) return;
+    const size = 120; const padding = 20; const x = ctx.canvas.width - size - padding; const y = padding; const scale = size / worldWidth;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "rgba(0, 0, 0, 0.6)"; ctx.strokeStyle = "rgba(255, 224, 102, 0.5)"; ctx.lineWidth = 2; ctx.fillRect(x, y, size, size); ctx.strokeRect(x, y, size, size); ctx.beginPath(); ctx.rect(x, y, size, size); ctx.clip();
+    ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.arc(x + player.x * scale, y + player.y * scale, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "red"; enemies.forEach(e => { const dotX = x + e.x * scale; const dotY = y + e.y * scale; if (e.isBoss) { ctx.fillStyle = "gold"; ctx.fillRect(dotX - 3, dotY - 3, 6, 6); ctx.fillStyle = "red"; } else { ctx.fillRect(dotX - 1, dotY - 1, 2, 2); } });
+    ctx.fillStyle = "#ffe066"; powerups.forEach(p => { ctx.beginPath(); ctx.arc(x + p.x * scale, y + p.y * scale, 2, 0, Math.PI * 2); ctx.fill(); });
+    ctx.restore();
 }
 
 export function closePanel(id) {
   const el = document.getElementById(id); if (el) { el.style.display = "none"; el.setAttribute("inert", ""); }
   panelStack.pop(); const prev = panelStack[panelStack.length - 1];
   if (prev) { const prevEl = document.getElementById(prev); if(prevEl) { prevEl.style.display = "flex"; prevEl.removeAttribute("inert"); } } 
-  else { if (!gameRunning) { const menu1 = document.getElementById("menu1"); if (menu1) menu1.style.display = "flex"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex"; } }
+  else { if (!gameRunning) { const menu1 = document.getElementById("menu1"); if (menu1) menu1.style.display = "flex"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex"; const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "flex"; const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "flex"; } }
   playSound("select");
 }
 
@@ -341,7 +400,6 @@ export function openUpgradeScreen(onComplete) {
   const maxPerUpgrade = 5; const pickLimit = 3; let picks = 0;
   player.upgrades = player.upgrades || {};
   upgradeKeys.forEach(u => { if (typeof player.upgrades[u.key] !== "number") player.upgrades[u.key] = 0; });
-
   const modal = document.createElement("div"); modal.id = "upgrade-modal";
   Object.assign(modal.style, { position: "fixed", inset: "0", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.85)", zIndex: 9999 });
   const panel = document.createElement("div");
@@ -349,28 +407,16 @@ export function openUpgradeScreen(onComplete) {
   panel.innerHTML = `<div style="margin-bottom:14px;font-size:20px;color:#ffd166;text-shadow:2px 2px 0px #000;">CHOOSE UPGRADES</div><div id="pick-count" style="margin-bottom:15px; color:#aaa; font-size:12px;">Picks Remaining: ${pickLimit}</div><div id="upg-rows" style="display:flex;flex-direction:column;gap:12px;margin-top:10px;"></div>`;
   modal.appendChild(panel); document.body.appendChild(modal);
   const rows = panel.querySelector("#upg-rows");
-
   function refresh() {
       rows.innerHTML = "";
       upgradeKeys.forEach(u => {
-          const row = document.createElement("div");
-          Object.assign(row.style, { display: "flex", alignItems:"center", justifyContent: "space-between", background: "rgba(255,255,255,0.05)", padding: "10px 15px", borderRadius: "8px" });
-          const lvl = player.upgrades[u.key] || 0;
-          let blocksHTML = "<div style='display:flex;gap:4px;'>";
+          const row = document.createElement("div"); Object.assign(row.style, { display: "flex", alignItems:"center", justifyContent: "space-between", background: "rgba(255,255,255,0.05)", padding: "10px 15px", borderRadius: "8px" });
+          const lvl = player.upgrades[u.key] || 0; let blocksHTML = "<div style='display:flex;gap:4px;'>";
           for(let i=0; i<maxPerUpgrade; i++) { const color = i < lvl ? "#ffd166" : "rgba(255,255,255,0.1)"; blocksHTML += `<div style="width:20px;height:12px;background:${color};border-radius:2px;"></div>`; }
-          blocksHTML += "</div>";
-          row.innerHTML = `<span style="font-size:12px;text-align:left;min-width:140px;">${u.label}</span>${blocksHTML}`;
-          const btn = document.createElement("button"); btn.textContent = "+";
-          const isMaxed = lvl >= maxPerUpgrade; const canAfford = picks < pickLimit;
+          blocksHTML += "</div>"; row.innerHTML = `<span style="font-size:12px;text-align:left;min-width:140px;">${u.label}</span>${blocksHTML}`;
+          const btn = document.createElement("button"); btn.textContent = "+"; const isMaxed = lvl >= maxPerUpgrade; const canAfford = picks < pickLimit;
           Object.assign(btn.style, { background: isMaxed || !canAfford ? "#555" : "linear-gradient(180deg,#ffd166,#ffb347)", border: "none", cursor: isMaxed || !canAfford ? "default" : "pointer", fontWeight: "bold", width: "32px", height: "28px", borderRadius: "4px", color: "#222", marginLeft: "15px" });
-          btn.onclick = () => {
-              if (picks >= pickLimit || lvl >= maxPerUpgrade) return;
-              player.upgrades[u.key] = lvl + 1; picks++; playSound("select"); recalcPlayerStats();
-              if (u.key === 'health') player.health = Math.min(player.health + 2, player.maxHealth);
-              if (u.key === 'magazine') player.ammo = Math.min(player.ammo + 4, player.magazineSize);
-              updateHUD(); refresh();
-              if (picks >= pickLimit) { setTimeout(() => { modal.remove(); if(onComplete) onComplete(); }, 300); }
-          };
+          btn.onclick = () => { if (picks >= pickLimit || lvl >= maxPerUpgrade) return; player.upgrades[u.key] = lvl + 1; picks++; playSound("select"); recalcPlayerStats(); if (u.key === 'health') player.health = Math.min(player.health + 2, player.maxHealth); if (u.key === 'magazine') player.ammo = Math.min(player.ammo + 4, player.magazineSize); updateHUD(); refresh(); if (picks >= pickLimit) { setTimeout(() => { modal.remove(); if(onComplete) onComplete(); }, 300); } };
           row.appendChild(btn); rows.appendChild(row);
       });
       document.getElementById("pick-count").textContent = `Picks Remaining: ${pickLimit - picks}`;
@@ -386,15 +432,10 @@ export function openWardrobe() {
         Object.assign(modal.style, { position: "fixed", inset: "0", background: "rgba(0,0,0,0.95)", display: "none", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "40px", zIndex: "10001", fontFamily: "'Press Start 2P', sans-serif", color: "white" });
         modal.innerHTML = `<div style="display:flex; flex-direction:column; alignItems:center; gap:15px; background:rgba(255,255,255,0.05); padding:20px; border-radius:12px;"><h3 style="color:#ffe066; margin:0;">PREVIEW</h3><canvas id="wardrobeCanvas" width="400" height="400" style="width:200px; height:200px; background:#222; border:4px solid #444; border-radius:8px; image-rendering:pixelated;"></canvas><small style="color:#aaa; font-size:10px;">Move & Aim to Test</small></div><div style="display:flex; flex-direction:column; width: 450px; max-width:90%;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;"><h2 style="color: #ffe066; margin:0;">WARDROBE</h2><div id="wardrobeCoins" style="color:gold; font-size:14px;">Coins: 0</div></div><div id="wardrobeGrid" style="display: flex; flex-direction:column; gap: 12px;"></div><button id="closeWardrobeBtn" style="margin-top: 25px; padding: 15px; background:#4CAF50; border:none; color:white; cursor:pointer;">Save & Close</button></div>`;
         document.body.appendChild(modal);
-        document.getElementById("closeWardrobeBtn").onclick = () => {
-            modal.style.display = "none"; document.getElementById("menu").style.display = "flex"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex";
-            if(previewInterval) { clearInterval(previewInterval); previewInterval = null; }
-            localStorage.setItem("equippedBodyColor", player.cosmetics.bodyColor); localStorage.setItem("equippedHatStyle", player.cosmetics.hatStyle); localStorage.setItem("equippedEyeStyle", player.cosmetics.eyeStyle); localStorage.setItem("equippedIndicatorStyle", player.cosmetics.indicatorStyle); localStorage.setItem("equippedBulletStyle", player.cosmetics.bulletStyle);
-            saveCosmetics(); playSound("select"); if(ammoDisplay) updateHUD();
-        };
+        document.getElementById("closeWardrobeBtn").onclick = () => { modal.style.display = "none"; document.getElementById("menu").style.display = "flex"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "flex"; const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "flex"; const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "flex"; if(previewInterval) { clearInterval(previewInterval); previewInterval = null; } localStorage.setItem("equippedBodyColor", player.cosmetics.bodyColor); localStorage.setItem("equippedHatStyle", player.cosmetics.hatStyle); localStorage.setItem("equippedEyeStyle", player.cosmetics.eyeStyle); localStorage.setItem("equippedIndicatorStyle", player.cosmetics.indicatorStyle); localStorage.setItem("equippedBulletStyle", player.cosmetics.bulletStyle); localStorage.setItem("equippedTrailStyle", player.cosmetics.trailStyle || "none"); saveCosmetics(); playSound("select"); if(ammoDisplay) updateHUD(); };
     }
-    document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`; document.getElementById("menu").style.display = "none"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none"; const grid = document.getElementById("wardrobeGrid"); grid.innerHTML = ""; 
-    const categories = [ { key: "bodies", label: "Body Color", stateKey: "bodyColor" }, { key: "hats", label: "Hat Style", stateKey: "hatStyle" }, { key: "eyes", label: "Eye Style", stateKey: "eyeStyle" }, { key: "indicators", label: "Aim Style", stateKey: "indicatorStyle" }, { key: "bullets", label: "Bullet Style", stateKey: "bulletStyle" } ];
+    document.getElementById("wardrobeCoins").textContent = `Coins: ${getTotalCoins()}`; document.getElementById("menu").style.display = "none"; const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none"; const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "none"; const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "none"; const grid = document.getElementById("wardrobeGrid"); grid.innerHTML = "";
+    const categories = [ { key: "bodies", label: "Body Color", stateKey: "bodyColor" }, { key: "hats", label: "Hat Style", stateKey: "hatStyle" }, { key: "eyes", label: "Eye Style", stateKey: "eyeStyle" }, { key: "trails", label: "Trail Style", stateKey: "trailStyle" }, { key: "indicators", label: "Aim Style", stateKey: "indicatorStyle" }, { key: "bullets", label: "Bullet Style", stateKey: "bulletStyle" } ];
     categories.forEach(cat => {
         const row = document.createElement("div"); Object.assign(row.style, { display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.1)", padding: "12px", borderRadius: "8px" });
         const label = document.createElement("div"); label.textContent = cat.label; label.style.color = "cyan"; label.style.fontSize = "12px";
@@ -405,7 +446,7 @@ export function openWardrobe() {
         let items = cosmeticRegistry[cat.key] || []; let curId = player.cosmetics[cat.stateKey]; let idx = items.findIndex(i => i.id === curId); if(idx === -1) idx = 0;
         const update = () => {
             if(!items.length) return; const item = items[idx]; previewState[cat.stateKey] = item.id; const unlocked = isUnlocked(item); const owned = hasCosmetic(item.id); dispBtn.onclick = null; 
-            if (unlocked) { if (owned) { dispBtn.textContent = item.name; dispBtn.style.color = "white"; dispBtn.style.cursor = "default"; player.cosmetics[cat.stateKey] = item.id; } else if (item.type === "buyable") { dispBtn.textContent = `Buy: ${item.price}`; const affordable = totalCoins >= item.price; dispBtn.style.color = affordable ? "#ffd700" : "#d32f2f"; dispBtn.style.cursor = "pointer"; dispBtn.onclick = () => { if (buyCosmetic(item.id)) { playSound("powerUp"); document.getElementById("wardrobeCoins").textContent = `Coins: ${totalCoins}`; update(); } else { playSound("hitHurt"); } }; } } else { dispBtn.textContent = "Locked"; dispBtn.style.color = "#888"; dispBtn.style.cursor = "default"; }
+            if (unlocked) { if (owned) { dispBtn.textContent = item.name; dispBtn.style.color = "white"; dispBtn.style.cursor = "default"; player.cosmetics[cat.stateKey] = item.id; } else if (item.type === "buyable") { dispBtn.textContent = `Buy: ${item.price}`; const affordable = getTotalCoins() >= item.price; dispBtn.style.color = affordable ? "#ffd700" : "#d32f2f"; dispBtn.style.cursor = "pointer"; dispBtn.onclick = () => { if (buyCosmetic(item.id)) { playSound("powerUp"); document.getElementById("wardrobeCoins").textContent = `Coins: ${getTotalCoins()}`; update(); } else { playSound("hitHurt"); } }; } } else { dispBtn.textContent = "Locked"; dispBtn.style.color = "#888"; dispBtn.style.cursor = "default"; }
             let hint = row.querySelector(".hint-tooltip"); if(!hint) { hint = document.createElement("div"); hint.className = "hint-tooltip"; Object.assign(hint.style, { position:"absolute", right:"20px", fontSize:"10px", color:"#ff5252", marginTop:"35px" }); row.appendChild(hint); }
             hint.textContent = unlocked ? "" : `Req: ${item.hint || "Unknown"}`;
         };
@@ -430,40 +471,35 @@ function startPreview() {
 }
 
 function setupSettingsListeners() {
-    const mSlider = document.getElementById("musicSlider"); const sSlider = document.getElementById("sfxSlider"); const mToggle = document.getElementById("musicToggle"); const sToggle = document.getElementById("sfxToggle"); 
+    const mSlider = document.getElementById("musicSlider"); const sSlider = document.getElementById("sfxSlider"); 
     if (mSlider) mSlider.addEventListener("input", (e) => setMusicVolume(e.target.value / 100)); if (sSlider) sSlider.addEventListener("input", (e) => setSFXVolume(e.target.value / 100));
-    if (mToggle) mToggle.addEventListener("change", (e) => toggleMusic(e.target.checked)); if (sToggle) sToggle.addEventListener("change", (e) => toggleSFX(e.target.checked));
+}
+
+export function showConfirmModal(message, onConfirm) {
+    let modal = document.getElementById("confirmModal");
+    if (!modal) {
+        modal = document.createElement("div"); modal.id = "confirmModal";
+        Object.assign(modal.style, { position: "fixed", inset: "0", background: "rgba(0,0,0,0.9)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: "20000", color: "white", fontFamily: "'Press Start 2P', sans-serif", textAlign: "center" });
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<div style="background:#222; border:4px solid #fff; padding:30px; border-radius:12px; width:400px; max-width:90%;"><p style="font-size:14px; line-height:1.6; margin-bottom:30px;">${message}</p><div style="display:flex; gap:20px;"><button id="confirmYes" style="flex:1; padding:15px; background:#4CAF50; border:none; color:white; cursor:pointer; font-family:inherit;">YES</button><button id="confirmNo" style="flex:1; padding:15px; background:#d32f2f; border:none; color:white; cursor:pointer; font-family:inherit;">NO</button></div></div>`;
+    modal.style.display = "flex";
+    document.getElementById("confirmYes").onclick = () => { modal.style.display = "none"; if (onConfirm) onConfirm(); };
+    document.getElementById("confirmNo").onclick = () => { modal.style.display = "none"; playSound("select"); };
 }
 
 window.openPanel = openPanel; window.closePanel = closePanel;
 
-// --- NEW FROST OVERLAY EFFECT ---
 export function drawFrostOverlay(ctx, width, height, intensity = 1.0) {
     if (intensity <= 0) return;
-    
     ctx.save();
-    // Create a radial gradient that is transparent in center and icy white/blue at edges
     const grad = ctx.createRadialGradient(width/2, height/2, height * 0.3, width/2, height/2, height * 0.85);
-    grad.addColorStop(0, "rgba(255, 255, 255, 0)");
-    grad.addColorStop(0.6, `rgba(200, 240, 255, ${0.2 * intensity})`);
-    grad.addColorStop(1, `rgba(180, 230, 255, ${0.7 * intensity})`);
-    
-    ctx.fillStyle = grad;
-    ctx.globalCompositeOperation = "source-over"; // Ensure it draws on top
-    ctx.fillRect(0, 0, width, height);
-
-    // Optional: Add some "crack" or "snowflake" details at corners
-    ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * intensity})`;
-    const cornerSize = 100;
-    
-    // Top-Left
+    grad.addColorStop(0, "rgba(255, 255, 255, 0)"); grad.addColorStop(0.6, `rgba(200, 240, 255, ${0.2 * intensity})`); grad.addColorStop(1, `rgba(180, 230, 255, ${0.7 * intensity})`);
+    ctx.fillStyle = grad; ctx.globalCompositeOperation = "source-over"; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * intensity})`; const cornerSize = 100;
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(cornerSize, 0); ctx.lineTo(0, cornerSize); ctx.fill();
-    // Top-Right
     ctx.beginPath(); ctx.moveTo(width, 0); ctx.lineTo(width - cornerSize, 0); ctx.lineTo(width, cornerSize); ctx.fill();
-    // Bottom-Left
     ctx.beginPath(); ctx.moveTo(0, height); ctx.lineTo(cornerSize, height); ctx.lineTo(0, height - cornerSize); ctx.fill();
-    // Bottom-Right
     ctx.beginPath(); ctx.moveTo(width, height); ctx.lineTo(width - cornerSize, height); ctx.lineTo(width, height - cornerSize); ctx.fill();
-
     ctx.restore();
 }

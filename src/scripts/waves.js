@@ -56,15 +56,15 @@ export function startWave(waveIdx) {
   }
   
   waveSpawning = true;
-  waveSpawnTimer = 0;
-  spawnPowerups(); 
-  
-  if (waveIdx === 7) updateAchievement("4", 8);
+  waveSpawnTimer = 40; // Trigger immediate first spawn
+  spawnPowerups();
+
+  // Track highest wave reached for all survival achievements
+  updateAchievement("6", waveIdx + 1);
+  updateAchievement("7", waveIdx + 1);
 
   return true;
-}
-
-export function updateWaveLogic() {
+  }export function updateWaveLogic() {
   if (waveSpawning) {
     waveSpawnTimer++;
     if (waveSpawnTimer >= 40) { 

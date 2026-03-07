@@ -6,12 +6,12 @@ import {
 import { createBoss, updateBoss, drawBoss } from "./boss.js"; 
 import { updateAchievement } from "./achievement.js";
 import { addSessionCoins } from "./economy.js"; 
-import { camera } from "./camera.js"; 
+import { camera, zoom } from "./camera.js"; 
 import { resolveMapCollision, checkCollision } from "./map.js"; 
 import { getFlowDirection } from "./pathfinding.js"; 
 import { takeDamage } from "./player.js";
 import { updateBossBar, hideBossBar } from "./ui.js"; 
-import { remotePlayers } from "./state.js"; 
+import { remotePlayers, updateLifetimeStat } from "./state.js"; 
 
 export let enemies = [];
 export let projectiles = [];
@@ -108,6 +108,9 @@ export function triggerExplosion(x, y, baseDamage, effects, playerRef = null) {
     enemies.forEach(other => {
         if (Math.hypot(other.x + other.width/2 - x, other.y + other.height/2 - y) < blastRadius) {
             other.health -= explosionDmg; other.hitFlash = 5;
+            if (effects && effects.spawnText) {
+                effects.spawnText(other.x + other.width/2, other.y, `${explosionDmg}`, "#ffab00", 14);
+            }
         }
     });
     if (playerRef && Math.hypot(playerRef.x + playerRef.width/2 - x, playerRef.y + playerRef.height/2 - y) < blastRadius) takeDamage(2);
@@ -219,9 +222,13 @@ export function updateEnemies(player, canvas, zombiesData, projectilesRef, sfxEn
 }
 
 // --- FIX IS IN THIS FUNCTION ---
-export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scoreObj, scoreDisplay, zombiesData, canvas, hitHurt, player, effects) {
+export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scoreObj, scoreDisplay, zombiesData, canvas, hitHurt, player, effects, bossIntroTimer = 0) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     let e = enemies[i];
+    
+    // BOSS INVULNERABILITY
+    const isInvulnerableBoss = e.isBoss && bossIntroTimer > 0;
+
     let damageReduction = 1.0;
     if (e.type === "Crusher" && e.state !== "stunned") damageReduction = 0.2; 
 
@@ -231,14 +238,34 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
       if (player.piercingShot && b.hitList && b.hitList.includes(e)) continue;
 
       if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
+        
+        if (isInvulnerableBoss) {
+            if (effects && effects.spawnText) {
+                effects.spawnText(e.x + e.width/2, e.y, "SHIELDED", "#4fc3f7", 10);
+            }
+            b.active = false;
+            continue;
+        }
+
         let baseDmg = b.damage || 1;
         let hitDmg = baseDmg;
         let isCrit = false;
-        if (player.alwaysCrit || Math.random() < player.critChance) { isCrit = true; hitDmg *= player.critMultiplier; }
+        if (player.alwaysCrit || Math.random() < player.critChance) { 
+            isCrit = true; 
+            hitDmg *= player.critMultiplier; 
+            player.critFeedback = 10;
+        }
         
         hitDmg = Math.max(1, Math.ceil(hitDmg * damageReduction));
         e.health -= hitDmg;
         e.hitFlash = 10;
+
+        // SPAWN IMPACT SPARKS
+        import("./index.js").then(m => {
+            if (m.spawnImpactParticles) {
+                m.spawnImpactParticles(b.x, b.y, "spark", e.color);
+            }
+        });
 
         if (player.explosiveShot) triggerExplosion(e.x + e.width/2, e.y + e.height/2, baseDmg, effects, player);
         if (player.piercingShot) { if (!b.hitList) b.hitList = []; b.hitList.push(e); } else { b.active = false; }
@@ -262,6 +289,9 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
     }
 
     if (e.health <= 0) {
+      if (effects && effects.spawnShatter) {
+          effects.spawnShatter(e.x + e.width/2, e.y + e.height/2, e.color);
+      }
       if (e.type === "Exploder") triggerExplosion(e.x + e.width/2, e.y + e.height/2, 5, effects, player);
       handleSplitterDeathSplit(e, enemies, zombiesData, canvas.width); 
 
@@ -280,8 +310,11 @@ export function handleBulletCollisions(bullets, sfxEnabled, explosionSound, scor
       
       if (!e.isBoss) enemyPool.push(e);
       enemies.splice(i, 1);
-      updateAchievement("2", 1);
-      
+      updateAchievement("1", 1); 
+      updateAchievement("2", 1); 
+      updateAchievement("3", 1); 
+      if (e.isBoss) updateAchievement("12", 1);
+      updateLifetimeStat("totalKills", 1);
       // FIXED LINE BELOW: Changed '!e.type' to 'e.type !=='
       if (sfxEnabled && e.type !== "Exploder") { 
           explosionSound.currentTime = 0; 
@@ -605,18 +638,42 @@ function drawStalker(ctx, t, hitFlash, color) {
     }
 }
 
-export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1) {
+export function drawEnemies(ctx, camera = { x: 0, y: 0 }, scale = 1, bossIntroTimer = 0) {
   drawAcidPools(ctx, camera); 
 
   const t = performance.now() / 1000;
   let bossFound = false;
+
+  // Culling bounds
+  const viewW = ctx.canvas.width / zoom;
+  const viewH = ctx.canvas.height / zoom;
+  const padding = 100;
 
   for (let e of enemies) {
     if (e.isBoss) {
         drawBoss(ctx, e, camera); 
         updateBossBar(e); 
         bossFound = true;
+        
+        // BOSS SHIELD VISUAL
+        if (bossIntroTimer > 0) {
+            ctx.save();
+            ctx.shadowColor = "#4fc3f7";
+            ctx.shadowBlur = 15;
+            ctx.strokeStyle = `rgba(79, 195, 247, ${0.5 + Math.sin(performance.now()*0.01)*0.3})`;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(e.x - camera.x + e.width/2, e.y - camera.y + e.height/2, e.width * 0.75, 0, Math.PI*2);
+            ctx.stroke();
+            ctx.restore();
+        }
     } else {
+        // CULLING
+        if (e.x + e.width < camera.x - padding || e.x > camera.x + viewW + padding ||
+            e.y + e.height < camera.y - padding || e.y > camera.y + viewH + padding) {
+            continue;
+        }
+
         ctx.save();
         const centerX = e.x - camera.x + (e.width / 2);
         const centerY = e.y - camera.y + (e.height / 2);
@@ -715,7 +772,19 @@ export function resolveEnemyBlocking(player) {
 
 export function drawProjectiles(ctx, camera) {
   const t = performance.now() / 200;
+  
+  // Culling bounds
+  const viewW = ctx.canvas.width / zoom;
+  const viewH = ctx.canvas.height / zoom;
+  const padding = 50;
+
   for (let p of projectiles) {
+    // CULLING
+    if (p.x + p.width < camera.x - padding || p.x > camera.x + viewW + padding ||
+        p.y + p.height < camera.y - padding || p.y > camera.y + viewH + padding) {
+        continue;
+    }
+
     ctx.save();
     ctx.translate(p.x - camera.x + p.width/2, p.y - camera.y + p.height/2);
     const isRock = (p.from === "thrower");

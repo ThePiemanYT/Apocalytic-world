@@ -4,14 +4,15 @@ import {
   player, bullets, canvas, ctx, gameRunning, paused, score, 
   worldWidth, worldHeight, setGameRunning, setPaused, setScore, 
   resetPlayerState, getPlayerDamage, isReloading, setIsReloading,
-  spawnBullet, remotePlayers, myId, isSinglePlayer // Imported isSinglePlayer
+  spawnBullet, remotePlayers, myId, isSinglePlayer, updateLifetimeStat 
 } from "./state.js";
 
 import { drawPlayer, drawPlayerIndicator, getBulletStyleDef, cosmeticRegistry } from "./cosmetics.js";
 import { playerShoot, playerTryReload, updatePlayerMovement, handleSprintKey, resetPlayer } from "./player.js";
-import { initUI, updateHUD, openUpgradeScreen, updateWaveUI, openPanel, closePanel, toggleGameUI, setupMultiplayerMenu, drawFrostOverlay } from "./ui.js";
+import { initUI, updateHUD, openUpgradeScreen, updateWaveUI, openPanel, closePanel, toggleGameUI, setupMultiplayerMenu, drawFrostOverlay, drawMinimap } from "./ui.js";
 import { sounds, playSound, backgroundMusic, musicEnabled } from "./audio.js";
-import { camera, updateCamera, zoom } from "./camera.js";
+import { camera, updateCamera, zoom, snapCamera } from "./camera.js"; 
+
 import { loadGameData, startWave, updateWaveLogic, waves, currentWave, waveSpawning, resetWaveState, zombiesData } from "./waves.js";
 import { enemies, resetEnemies, updateEnemies, drawEnemies, handleBulletCollisions, handlePlayerCollisions, handleWhirlwind, projectiles, updateProjectiles, drawProjectiles, handleProjectilePlayerCollision, triggerExplosion, resolveEnemyBlocking } from "./enemy.js";
 import { reload } from "./reload.js";
@@ -47,18 +48,121 @@ let lastTime = 0;
 let usedPowerup = false;
 let powerupsCollected = 0;
 let shakeAmount = 0;
-let floatingTexts = []; 
 let explosions = []; 
 let confetti = []; 
+let bossIntroTimer = 0;
 
-export function spawnFloatingText(x, y, text, color = "#fff", size = 12) { floatingTexts.push({ x, y, text, color, size, life: 60 }); }
+// Particle Pooling
+const PARTICLE_POOL_SIZE = 300;
+const particlePool = Array.from({ length: PARTICLE_POOL_SIZE }, () => ({ active: false }));
+function getFreeParticle() {
+    return particlePool.find(p => !p.active) || particlePool[0]; 
+}
+
+// Shell Casing Pooling
+const SHELL_POOL_SIZE = 100;
+const shellPool = Array.from({ length: SHELL_POOL_SIZE }, () => ({ active: false }));
+function getFreeShell() {
+    return shellPool.find(s => !s.active) || shellPool[0];
+}
+
+// Floating Text Pooling
+const FT_POOL_SIZE = 50;
+const ftPool = Array.from({ length: FT_POOL_SIZE }, () => ({ active: false }));
+function getFreeFT() {
+    return ftPool.find(f => !f.active) || ftPool[0];
+}
+
+// Trail Pooling
+const TRAIL_POOL_SIZE = 150;
+const trailPool = Array.from({ length: TRAIL_POOL_SIZE }, () => ({ active: false }));
+function getFreeTrail() {
+    return trailPool.find(t => !t.active) || trailPool[0];
+}
+
+// Offscreen canvas for Chromatic Aberration
+const offscreenCanvas = document.createElement("canvas");
+const offctx = offscreenCanvas.getContext("2d");
+
+export function spawnShatterParticles(x, y, color) {
+    const count = 8 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < count; i++) {
+        const p = getFreeParticle();
+        p.active = true;
+        p.x = x; p.y = y;
+        p.size = 4 + Math.random() * 5;
+        p.vx = (Math.random() - 0.5) * 10;
+        p.vy = (Math.random() - 0.5) * 10;
+        p.life = 30 + Math.random() * 30;
+        p.maxLife = p.life;
+        p.color = color || "#f44336";
+        p.rotation = Math.random() * Math.PI * 2;
+        p.rotSpeed = (Math.random() - 0.5) * 0.5;
+        p.type = "shatter";
+    }
+}
+
+export function spawnImpactParticles(x, y, type, color = "#fff") {
+    const count = type === "spark" ? 3 : 5;
+    for (let i = 0; i < count; i++) {
+        const p = getFreeParticle();
+        p.active = true;
+        p.x = x; p.y = y;
+        p.size = type === "spark" ? 2 + Math.random() * 2 : 4 + Math.random() * 6;
+        p.vx = (Math.random() - 0.5) * (type === "spark" ? 8 : 3);
+        p.vy = (Math.random() - 0.5) * (type === "spark" ? 8 : 3);
+        p.life = type === "spark" ? 15 + Math.random() * 10 : 20 + Math.random() * 20;
+        p.maxLife = p.life;
+        p.color = color;
+        p.type = type; // "spark" or "puff"
+        p.rotation = Math.random() * Math.PI * 2;
+        p.rotSpeed = (Math.random() - 0.5) * 0.2;
+    }
+}
+
+export function spawnTrailParticle(x, y, style, color) {
+    const t = getFreeTrail();
+    t.active = true;
+    t.x = x; t.y = y;
+    t.style = style;
+    t.color = color;
+    t.life = style === "rainbow" ? 40 : 25;
+    t.maxLife = t.life;
+    t.size = style === "ghost" ? 24 : 8;
+    t.vx = (Math.random() - 0.5) * 1;
+    t.vy = (Math.random() - 0.5) * 1;
+}
+
+export function spawnShell(x, y, angle) {
+    const s = getFreeShell();
+    s.active = true;
+    s.x = x; s.y = y;
+    s.vx = Math.cos(angle + Math.PI/2) * (2 + Math.random() * 2);
+    s.vy = Math.sin(angle + Math.PI/2) * (2 + Math.random() * 2) - 2;
+    s.rotation = Math.random() * Math.PI * 2;
+    s.rotSpeed = (Math.random() - 0.5) * 0.4;
+    s.life = 60 + Math.random() * 30;
+}
+
+export function spawnFloatingText(x, y, text, color = "#fff", size = 12) { 
+    const f = getFreeFT();
+    f.active = true;
+    f.x = x; f.y = y;
+    f.text = text; f.color = color; f.size = size;
+    f.life = 60;
+    f.vx = (Math.random() - 0.5) * 2;
+    f.vy = -2 - Math.random() * 2;
+    f.opacity = 1;
+    f.scale = 1.3;
+}
 function spawnExplosion(x, y, size, color = "orange") { explosions.push({ x, y, size, life: 1.0, color }); }
 function triggerShake(amount) { shakeAmount = amount; }
 
 // Define GLOBALLY so player.js can trigger screen shake
 window.onBulletFired = (amount = 1) => { 
     triggerShake(2); 
-    updateAchievement("3", amount); 
+    updateAchievement("4", amount); 
+    updateAchievement("5", amount); 
 };
 
 function autoReload() { if (!isReloading && player.ammo === 0 && player.reserveAmmo > 0) playerTryReload(); }
@@ -85,6 +189,7 @@ function startDeathSequence() {
         player.isDead = true;
         player.deathTimer = 120; 
         playSound("playerDeath"); 
+        updateLifetimeStat("totalDeaths", 1); // Track lifetime deaths
         if (currentWave >= 2) { 
              addSessionCoins(10);
              spawnFloatingText(player.x, player.y - 60, "+10 Pity Coins", "gold", 14);
@@ -122,7 +227,6 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
     return;
   }
-  
   // --- 1. LOCAL PLAYER MOVEMENT (Always runs) ---
   if (!player.isDead && !player.isWinning) {
       updateInput(player.x, player.y, camera.x, camera.y, zoom);
@@ -130,7 +234,7 @@ function gameLoop(timestamp) {
       updatePlayerMovement(input.keys || {}, canvas, timeScale);
       resolveMapCollision(player);
     resolveEnemyBlocking(player);
-      
+
       // Client: Send inputs to Host
       if (!isHost && !isSinglePlayer) {
           sendInputToHost({ 
@@ -196,6 +300,10 @@ function gameLoop(timestamp) {
               if (!b.hasHitWall) {
                  b.hasHitWall = true;
                  const centerX = b.x + b.width/2; const centerY = b.y + b.height/2;
+                 
+                 // SPAWN WALL PUFFS
+                 spawnImpactParticles(centerX, centerY, "puff", "#aaa");
+
                  if (player.explosiveShot) {
                     triggerExplosion(centerX, centerY, b.damage || 1, { spawnText: spawnFloatingText, shake: triggerShake, spawnExplosion: spawnExplosion });
                  } else { spawnFloatingText(centerX, centerY, "•", "#ccc", 10); }
@@ -216,6 +324,7 @@ function gameLoop(timestamp) {
           spawnText: spawnFloatingText, 
           shake: triggerShake, 
           spawnExplosion: spawnExplosion,
+          spawnShatter: spawnShatterParticles, // Added shatter particles
           playExplosion: () => playSound("explosionPowerup", 80) 
       };
 
@@ -225,7 +334,7 @@ function gameLoop(timestamp) {
          const sfxWrapper = { currentTime: 0, play: () => { playSound("explosion", 80); return Promise.resolve(); } };
          const hitWrapper = { currentTime: 0, play: () => { playSound("hitHurt", 50); return Promise.resolve(); } };
          
-         handleBulletCollisions(bullets, true, sfxWrapper, { value: score }, document.getElementById("score"), module.zombiesData || zombiesData, canvas, hitWrapper, player, effects);
+         handleBulletCollisions(bullets, true, sfxWrapper, { value: score }, document.getElementById("score"), module.zombiesData || zombiesData, canvas, hitWrapper, player, effects, bossIntroTimer);
          setScore(parseInt(document.getElementById("score").textContent.replace(/\D/g, "")) || 0);
       });
       
@@ -253,7 +362,10 @@ function gameLoop(timestamp) {
               openUpgradeScreen(() => {
                 setPaused(false); resumePowerups(); upgradeScreenShown = true; lastTime = 0; checkNextWave();
               });
-            } else { checkNextWave(); }
+            } else { 
+              updateLifetimeStat("totalWavesSurvived", 1);
+              checkNextWave(); 
+            }
           }, 1200);
         }
       }
@@ -286,42 +398,157 @@ function gameLoop(timestamp) {
       autoReload(); 
   }
 
+  // --- PARTICLE PHYSICS ---
+  for (const p of particlePool) {
+      if (!p.active) continue;
+      p.x += p.vx * worldTimeScale;
+      p.y += p.vy * worldTimeScale;
+      
+      if (p.type === "spark") {
+          p.vx *= 0.9; p.vy *= 0.9; 
+      } else if (p.type === "puff") {
+          p.vy -= 0.05 * worldTimeScale;
+          p.vx *= 0.95;
+      } else {
+          p.vy += 0.2 * worldTimeScale; // Gravity for shatter particles
+          p.vx *= 0.98;
+      }
+      
+      if (p.rotation !== undefined) p.rotation += p.rotSpeed * worldTimeScale;
+      p.life -= 1 * worldTimeScale;
+      if (p.life <= 0) p.active = false;
+  }
+
+  // Shell Casing Physics
+  for (const s of shellPool) {
+      if (!s.active) continue;
+      s.x += s.vx * worldTimeScale;
+      s.y += s.vy * worldTimeScale;
+      s.vy += 0.3 * worldTimeScale; 
+      s.rotation += s.rotSpeed * worldTimeScale;
+      s.life -= 1 * worldTimeScale;
+      if (s.life <= 0) s.active = false;
+  }
+
+  // Trail Physics
+  for (const t of trailPool) {
+      if (!t.active) continue;
+      if (t.style === "matrix") t.y += 1 * worldTimeScale;
+      t.life -= 1 * worldTimeScale;
+      if (t.life <= 0) t.active = false;
+  }
+
+  if (player.muzzleFlash > 0) player.muzzleFlash -= 1 * timeScale;
+  if (player.chromaticAberration > 0) player.chromaticAberration -= 1 * timeScale;
+  if (player.critFeedback > 0) player.critFeedback -= 1 * timeScale;
+  if (bossIntroTimer > 0) bossIntroTimer -= 1 * timeScale;
+
   updateHUD();
-  updateCamera(player);
+  
+  // ZOOM CALCULATION (Moved up for camera clamping)
+  let finalZoom = zoom;
+  if (bossIntroTimer > 0) {
+      // Dynamic zoom curve: zooms out then zooms back in using sine
+      const progress = 1 - (bossIntroTimer / 450);
+      const zoomFactor = Math.sin(progress * Math.PI) * 0.15; // 15% zoom out at peak
+      finalZoom *= (1 - zoomFactor);
+  }
+
+  // CAMERA LOGIC: Point at boss during entrance, otherwise at player
+  const enteringBoss = enemies.find(e => e.isBoss && e.state === "enter");
+  if (enteringBoss) {
+      updateCamera(enteringBoss, shakeAmount, finalZoom);
+  } else {
+      updateCamera(player, shakeAmount, finalZoom);
+  }
+  
+  if (shakeAmount > 0) shakeAmount = 0; 
 
   // --- 4. RENDER ---
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  ctx.save();
-  if (shakeAmount > 0) {
-      const sx = (Math.random() - 0.5) * shakeAmount;
-      const sy = (Math.random() - 0.5) * shakeAmount;
-      ctx.translate(sx, sy);
-      shakeAmount *= 0.9; 
-      if (shakeAmount < 0.5) shakeAmount = 0;
+  // Chromatic Aberration Start: Capture scene if needed
+  if (player.chromaticAberration > 0) {
+      if (offscreenCanvas.width !== canvas.width || offscreenCanvas.height !== canvas.height) {
+          offscreenCanvas.width = canvas.width; offscreenCanvas.height = canvas.height;
+      }
   }
+
+  // DESATURATION & FILTERS
+  let healthPct = player.health / player.maxHealth;
+  let filterString = "";
+  if (player.timeSlowed) filterString += "grayscale(100%) ";
+  if (healthPct < 0.3 && healthPct > 0) {
+      const intensity = (0.3 - healthPct) / 0.3;
+      filterString += `saturate(${Math.max(0, 100 - intensity * 80)}%) `;
+  }
+  
+  // Only set filter if it actually changed
+  const targetFilter = filterString.trim() || "none";
+  if (ctx.filter !== targetFilter) {
+      ctx.filter = targetFilter;
+  }
+
+  ctx.save();
+  // Use camera's internal shake offset
+  ctx.translate(camera.shake.x, camera.shake.y);
 
   // ZOOM APPLICATION
   ctx.save();
-  ctx.scale(zoom, zoom); 
+  ctx.scale(finalZoom, finalZoom); 
   
-  if (player.timeSlowed) ctx.filter = "grayscale(100%)";
-  drawMap(ctx, camera);
-  if (player.timeSlowed) ctx.filter = "none";
+  drawMap(ctx, camera, canvas.width, canvas.height, finalZoom);
   
+  // --- DRAW EFFECTS BEHIND PLAYER ---
+  
+  // 1. Cosmetic Trails
+  for (const t of trailPool) {
+      if (!t.active) continue;
+      ctx.save();
+      ctx.globalAlpha = (t.life / t.maxLife) * 0.5;
+      if (t.style === "flame") {
+          ctx.fillStyle = Math.random() > 0.5 ? "orange" : "red";
+          ctx.fillRect(Math.round(t.x - camera.x - 4), Math.round(t.y - camera.y - 4), 8, 8);
+      } else if (t.style === "matrix") {
+          ctx.fillStyle = "#00ff41";
+          ctx.font = "10px monospace";
+          ctx.fillText(Math.random() > 0.5 ? "1" : "0", Math.round(t.x - camera.x), Math.round(t.y - camera.y));
+      } else if (t.style === "rainbow") {
+          const hue = (performance.now() * 0.1) % 360;
+          ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.5)`;
+          ctx.fillRect(Math.round(t.x - camera.x - 6), Math.round(t.y - camera.y - 6), 12, 12);
+      } else if (t.style === "ghost") {
+          ctx.fillStyle = t.color || "cyan";
+          ctx.fillRect(Math.round(t.x - camera.x - t.size/2), Math.round(t.y - camera.y - t.size/2), t.size, t.size);
+      }
+      ctx.restore();
+  }
+
+  // 2. Dash Ghosts
   if (player.dashActive && !player.isDead) {
       ctx.globalAlpha = 0.4;
-      
       let dashColor = "cyan";
       const bItem = cosmeticRegistry.bodies.find(b => b.id === player.cosmetics.bodyColor);
       if (bItem) dashColor = bItem.color;
       else if (player.cosmetics.bodyColor === "green") dashColor = "#00e676";
-      else if (player.cosmetics.bodyColor) dashColor = player.cosmetics.bodyColor; // Fallback if it's already a color code
+      else if (player.cosmetics.bodyColor) dashColor = player.cosmetics.bodyColor; 
 
       ctx.fillStyle = dashColor; 
       ctx.fillRect(Math.round(player.x - camera.x - input.move.x*15), Math.round(player.y - camera.y - input.move.y*15), player.width, player.height);
       ctx.fillRect(Math.round(player.x - camera.x - input.move.x*30), Math.round(player.y - camera.y - input.move.y*30), player.width, player.height);
       ctx.globalAlpha = 1.0;
+  }
+
+  // 3. Status Auras
+  if (!player.isDead && !player.isWinning && (player.doubleDamage || player.tripleShot || player.alwaysCrit || player.piercingShot)) {
+      ctx.save();
+      ctx.globalAlpha = 0.3 + Math.sin(timestamp * 0.01) * 0.1;
+      ctx.strokeStyle = player.doubleDamage ? "red" : (player.tripleShot ? "#4fc3f7" : "gold");
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(Math.round(player.x - camera.x + player.width/2), Math.round(player.y - camera.y + player.height/2), player.width * 0.8, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
   }
 
   if (player.isWinning) {
@@ -334,6 +561,18 @@ function gameLoop(timestamp) {
           ctx.rotate(-c.rotation);
           ctx.translate(-(c.x - camera.x), -(c.y - camera.y));
       }
+      ctx.restore();
+  }
+
+  // --- DRAW PARTICLES ---
+  for (const p of particlePool) {
+      if (!p.active) continue;
+      ctx.save();
+      ctx.translate(p.x - camera.x, p.y - camera.y);
+      ctx.rotate(p.rotation);
+      ctx.globalAlpha = Math.min(1.0, p.life / 20);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
       ctx.restore();
   }
 
@@ -362,6 +601,36 @@ function gameLoop(timestamp) {
       ctx.restore();
   } else {
       drawPlayer(ctx, player, input.aim, input.move, camera);
+      
+      // STATUS AURAS
+      if (player.doubleDamage || player.tripleShot || player.alwaysCrit || player.piercingShot) {
+          ctx.save();
+          ctx.globalAlpha = 0.3 + Math.sin(timestamp * 0.01) * 0.1;
+          ctx.strokeStyle = player.doubleDamage ? "red" : (player.tripleShot ? "#4fc3f7" : "gold");
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(player.x - camera.x + player.width/2, player.y - camera.y + player.height/2, player.width * 0.8, 0, Math.PI*2);
+          ctx.stroke();
+          ctx.restore();
+      }
+
+      // MUZZLE FLASH
+      if (player.muzzleFlash > 0) {
+          ctx.save();
+          const cx = player.x - camera.x + player.width / 2;
+          const cy = player.y - camera.y + player.height / 2;
+          const angle = Math.atan2(input.aim.y - cy, input.aim.x - cx);
+          ctx.translate(cx, cy);
+          ctx.rotate(angle);
+          ctx.fillStyle = "rgba(255, 255, 200, 0.8)";
+          ctx.beginPath();
+          ctx.moveTo(20, 0);
+          ctx.lineTo(40 + Math.random()*20, -10);
+          ctx.lineTo(40 + Math.random()*20, 10);
+          ctx.fill();
+          ctx.restore();
+      }
+
       if (player.hurtTime && player.hurtTime > 0) {
           ctx.save(); ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
           ctx.fillRect(player.x - camera.x, player.y - camera.y, player.width, player.height);
@@ -369,7 +638,20 @@ function gameLoop(timestamp) {
       }
   }
 
-  if (player.timeSlowed) ctx.filter = "grayscale(100%)";
+  // DRAW SHELLS
+  ctx.fillStyle = "#aa9933"; // Brass color
+  for (const s of shellPool) {
+      if (!s.active) continue;
+      ctx.save();
+      ctx.translate(s.x - camera.x, s.y - camera.y);
+      ctx.rotate(s.rotation);
+      ctx.globalAlpha = Math.min(1.0, s.life / 20);
+      ctx.fillRect(-2, -1, 4, 2);
+      ctx.restore();
+  }
+
+  if (player.timeSlowed) { if(ctx.filter !== "grayscale(100%)") ctx.filter = "grayscale(100%)"; }
+  else { if(healthPct >= 0.3 && ctx.filter !== "none") ctx.filter = "none"; }
 
   if (isHost || isSinglePlayer) {
       Object.values(remotePlayers).forEach(rp => {
@@ -394,6 +676,19 @@ function gameLoop(timestamp) {
       const bx = b.x - camera.x; const by = b.y - camera.y;
       if (!Number.isFinite(bx) || !Number.isFinite(by)) continue; 
       const styleDef = getBulletStyleDef(b.color); 
+      
+      // BULLET TRAIL
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.strokeStyle = styleDef.color;
+      ctx.lineWidth = b.width;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx - b.dx * 3, by - b.dy * 3);
+      ctx.stroke();
+      ctx.restore();
+
       ctx.shadowColor = styleDef.color; ctx.shadowBlur = 10;
       if (styleDef.type === "gradient") {
           const grad = ctx.createLinearGradient(bx - b.width, by - b.width, bx + b.width, by + b.width);
@@ -406,7 +701,7 @@ function gameLoop(timestamp) {
     }
   }
 
-  drawEnemies(ctx, camera, 0.6);
+  drawEnemies(ctx, camera, 0.6, bossIntroTimer);
   drawProjectiles(ctx, camera);
   
   for (const exp of explosions) {
@@ -416,23 +711,52 @@ function gameLoop(timestamp) {
   ctx.globalAlpha = 1.0;
 
   drawAndHandlePowerups(ctx, player, updateHUD, true, sounds.powerUp, undefined, camera, (type) => {
-      usedPowerup = true; powerupsCollected++; updateAchievement("5", 1); 
-      if (powerupsCollected >= 20) { updateAchievement("6", 1); }
+      usedPowerup = true; powerupsCollected++; 
+      updateAchievement("8", 1); // Lucky Draw (20)
+      updateAchievement("9", 1); // Collector (100)
   });
   
-  if (player.timeSlowed) ctx.filter = "none";
+  ctx.filter = "none"; // Reset filter before HUD/Vignette
   
+  // LOW HEALTH VIGNETTE
+  if (healthPct < 0.3 && healthPct > 0) {
+      const intensity = (0.3 - healthPct) / 0.3;
+      const pulse = 0.8 + Math.sin(timestamp * 0.01) * 0.2;
+      const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, canvas.width * 0.4, canvas.width/2, canvas.height/2, canvas.width * 0.9);
+      grad.addColorStop(0, "rgba(0,0,0,0)");
+      grad.addColorStop(1, `rgba(200, 0, 0, ${0.5 * intensity * pulse})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
   drawActiveBuffs(ctx, player, camera, performance.now());
+  drawMinimap(ctx);
   drawPlayerIndicator(ctx, player, input.aim, camera);
   
-  for (let i = floatingTexts.length - 1; i >= 0; i--) {
-      const ft = floatingTexts[i];
-      ft.y -= 0.5 * worldTimeScale; ft.life -= 1 * worldTimeScale;
-      ctx.globalAlpha = Math.max(0, ft.life / 40);
-      ctx.fillStyle = ft.color; ctx.font = `${ft.size}px 'Press Start 2P', sans-serif`;
+  for (const f of ftPool) {
+      if (!f.active) continue;
+      f.x += f.vx * worldTimeScale;
+      f.y += f.vy * worldTimeScale;
+      f.vy += 0.1 * worldTimeScale; 
+      f.life -= 1 * worldTimeScale;
+      f.opacity = Math.max(0, f.life / 60);
+      f.scale = Math.max(1, f.scale * 0.98); 
+
+      ctx.globalAlpha = f.opacity;
+      ctx.save();
+      ctx.translate(f.x - camera.x, f.y - camera.y);
+      ctx.scale(f.scale, f.scale);
+      
+      ctx.fillStyle = f.color; 
+      ctx.font = `${f.size}px 'Press Start 2P', sans-serif`;
       ctx.strokeStyle = "black"; ctx.lineWidth = 3;
-      ctx.strokeText(ft.text, ft.x - camera.x, ft.y - camera.y); ctx.fillText(ft.text, ft.x - camera.x, ft.y - camera.y);
-      if (ft.life <= 0) floatingTexts.splice(i, 1);
+      ctx.textAlign = "center";
+      
+      ctx.strokeText(f.text, 0, 0); 
+      ctx.fillText(f.text, 0, 0);
+      ctx.restore();
+      
+      if (f.life <= 0) f.active = false;
   }
   ctx.globalAlpha = 1.0;
 
@@ -447,6 +771,29 @@ function gameLoop(timestamp) {
       drawFrostOverlay(ctx, canvas.width, canvas.height, Math.min(0.6, player.frostbiteStacks * 0.1));
   }
   
+  // --- CHROMATIC ABERRATION (GLITCH) FINAL PASS ---
+  if (player.chromaticAberration > 0) {
+      offctx.clearRect(0, 0, canvas.width, canvas.height);
+      offctx.drawImage(canvas, 0, 0);
+      
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      const offset = player.chromaticAberration * 0.5;
+      ctx.globalCompositeOperation = "screen";
+      
+      // Draw Red Shift
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(offscreenCanvas, -offset, 0);
+      
+      // Draw Cyan Shift
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(offscreenCanvas, offset, 0);
+      
+      ctx.restore();
+  }
+
   requestAnimationFrame(gameLoop);
 }
 
@@ -498,13 +845,6 @@ function setupLobbyUI() {
 }
 
 function openLobbyAsHost() {
-    // We don't set isSinglePlayer=false here because ui.js handles it now via openMultiplayerModal flow
-    // But index.js calls this too.
-    // However, index.js relies on ui.js's setupMultiplayerMenu now.
-    // So this function in index.js is likely obsolete/duplicate if not cleaned up.
-    // But the index.js I provided *keeps* these functions for safety if called directly.
-    // We should rely on ui.js for the main flow.
-    // Let's assume ui.js handles the UI part.
 }
 
 // ... (Rest of index.js functions like startGame, resetGame etc.) ...
@@ -563,6 +903,7 @@ function resetGame() {
   player.cosmetics.eyeStyle = localStorage.getItem("equippedEyeStyle") || "normal";
   player.cosmetics.indicatorStyle = localStorage.getItem("equippedIndicatorStyle") || "dot";
   player.cosmetics.bulletStyle = localStorage.getItem("equippedBulletStyle") || "default";
+  player.cosmetics.trailStyle = localStorage.getItem("equippedTrailStyle") || "none";
 
   resetPlayerState();
   const safeCosmetics = { ...player.cosmetics };
@@ -574,22 +915,37 @@ function resetGame() {
   resetPowerups();
   updateHUD();
   usedPowerup = false; powerupsCollected = 0; shakeAmount = 0;
-  floatingTexts = []; explosions = []; confetti = []; 
+  particlePool.forEach(p => p.active = false);
+  shellPool.forEach(s => s.active = false);
+  ftPool.forEach(f => f.active = false);
+  trailPool.forEach(t => t.active = false);
+  explosions.length = 0; confetti.length = 0; 
 }
 
 function endGame(victory = false) {
   setGameRunning(false);
+  updateLifetimeStat("highScore", score);
+  updateLifetimeStat("totalCoinsEarned", sessionCoins);
+  
+  // Track Coin Achievements
+  updateAchievement("10", sessionCoins);
+  updateAchievement("11", sessionCoins);
+
   const finalScore = document.getElementById("finalScore");
   finalScore.innerHTML = (victory ? "You Win!<br>" : "Your Score: ") + score + "<br><br><span style='color:gold'>Coins Earned: " + sessionCoins + "</span>";
   document.getElementById("gameOver").style.display = "flex";
   backgroundMusic.pause();
   
-  if (victory && !usedPowerup) updateAchievement("1", 1);
+  if (victory && !usedPowerup) {
+      // Logic for 'No Powerups' could go here if we add an achievement for it later
+  }
   if (!victory) playSound("game-over"); 
   
   toggleGameUI(false);
   resetPowerups();
   const wBtn = document.getElementById("wardrobeBtn"); if(wBtn) wBtn.style.display = "none";
+  const mBtn = document.getElementById("metaShopBtn"); if(mBtn) mBtn.style.display = "none";
+  const sBtn = document.getElementById("statsBtn"); if(sBtn) sBtn.style.display = "none";
 }
 
 function quitGame() { playSound("select"); window.close(); }
@@ -745,17 +1101,65 @@ window.backCredit = backCredit;
 window.toggleFullscreen = toggleFullscreen;
 
 window.addEventListener("DOMContentLoaded", () => {
+  const loadingScreen = document.getElementById("loadingScreen");
+  const loadingBar = document.getElementById("loadingBar");
+  const loadingText = document.getElementById("loadingText");
+  
+  import("./audio.js").then(({ setOnProgress, totalAssets }) => {
+      let dataLoaded = false;
+      let totalToLoad = totalAssets + 2; // +2 for JSON data
+      let audioLoadedCount = 0;
+
+      const updateProgress = () => {
+          const currentTotalLoaded = audioLoadedCount + (dataLoaded ? 2 : 0);
+          const progress = (currentTotalLoaded / totalToLoad) * 100;
+          if (loadingBar) loadingBar.style.width = `${progress}%`;
+          if (loadingText) loadingText.textContent = `Loading Assets... ${Math.round(progress)}%`;
+          
+          if (currentTotalLoaded >= totalToLoad) {
+              setTimeout(() => {
+                  if (loadingScreen) {
+                      loadingScreen.classList.add("hidden");
+                      // Remove from DOM after fade completes (1s transition + buffer)
+                      setTimeout(() => {
+                          loadingScreen.style.display = "none";
+                      }, 1100);
+                  }
+                  showMenuBackground();
+                  toggleAnimation(true);
+              }, 500);
+          }
+      };
+
+      setOnProgress((loaded) => {
+          audioLoadedCount = loaded;
+          updateProgress();
+      });
+
+      loadGameData().then(() => {
+          dataLoaded = true;
+          updateProgress();
+      });
+  });
+
   initUI();
   toggleGameUI(false);
   loadAchievements();
   initPathfinding();
   setupMultiplayerMenu(); 
+
+  // Initialize Meta-Achievements
+  import("./economy.js").then(({ checkCompletionistAchievement }) => {
+      checkCompletionistAchievement();
+      let totalLevels = 0;
+      ["health", "speed", "damage", "magazine", "reserve"].forEach(t => {
+          totalLevels += (player.metaUpgrades[t] || 0);
+      });
+      updateAchievement("16", totalLevels); 
+  });
   
   window.addEventListener("resize", () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
   canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-  
-  showMenuBackground();
-  toggleAnimation(true);
 });
 
 window.addEventListener("beforeunload", () => { saveGameEconomy(); });
@@ -768,3 +1172,7 @@ document.addEventListener("keydown", e => {
 });
 
 const pauseBtn = document.getElementById("pauseBtn"); if (pauseBtn) pauseBtn.onclick = pauseGame;
+window.onBossSpawned = () => {
+    bossIntroTimer = 450; // 7.5-second window
+    triggerShake(8);
+};

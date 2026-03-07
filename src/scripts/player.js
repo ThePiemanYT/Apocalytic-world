@@ -6,8 +6,9 @@ import { reload } from "./reload.js";
 import { 
     player, bullets, spawnBullet, getPlayerDamage, 
     isReloading, setIsReloading, setScore, 
-    worldWidth, worldHeight, myId // FIX: Import myId
+    worldWidth, worldHeight, myId, updateLifetimeStat 
 } from "./state.js";
+import { spawnShell } from "./index.js"; 
 
 function safePlaySound(name, volume = 1.0) {
     try {
@@ -27,6 +28,7 @@ export function takeDamage(amount) {
 
     player.health -= finalDamage;
     player.hurtTime = 15; 
+    player.chromaticAberration = 10; // Trigger glitch effect
     safePlaySound("hitHurt", 0.8); 
     
     const healthBar = document.getElementById("healthFill");
@@ -41,6 +43,7 @@ export function takeDamage(amount) {
             player.isDead = true;
             player.deathTimer = 120; 
             safePlaySound("playerDeath", 1.0); 
+            updateLifetimeStat("totalDeaths", 1);
         }
     }
 }
@@ -56,6 +59,7 @@ export function playerShoot(targetX, targetY, camera, zoom) {
     player.lastShootTime = now;
 
     player.ammo--;
+    player.muzzleFlash = 3; // Trigger muzzle flash (frames)
     updateHUD();
     
     const cx = player.x + player.width / 2;
@@ -71,6 +75,7 @@ export function playerShoot(targetX, targetY, camera, zoom) {
     // FIX: Pass 'myId' as the 8th argument
     const fire = (ang) => {
         spawnBullet(cx, cy, Math.cos(ang) * speed, Math.sin(ang) * speed, getPlayerDamage(), styleId, false, myId);
+        spawnShell(cx, cy, ang); // Spawn shell casing
     };
 
     let bulletsFired = 1;
@@ -81,6 +86,7 @@ export function playerShoot(targetX, targetY, camera, zoom) {
         fire(angle);
     }
 
+    updateLifetimeStat("totalBulletsFired", bulletsFired);
     safePlaySound("laserShoot", 0.5); 
     if (window.onBulletFired) window.onBulletFired(bulletsFired);
 }

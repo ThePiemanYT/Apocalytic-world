@@ -2,8 +2,7 @@
   {
     "wave": 1,
     "zombies": [
-      { "type": "normal", "count": 6 },
-      { "type": "speed", "count": 2 }
+      { "type": "Frost-Core Construct", "count": 1 }
     ]
   },
   {

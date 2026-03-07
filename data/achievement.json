@@ -1,32 +1,98 @@
 {
   "1": {
-    "name": "True Hero",
-    "description": "Win a game without using any powerups.",
-    "goal": 1,
+    "name": "Zombie Slayer I",
+    "description": "Defeat 50 enemies.",
+    "goal": 50,
     "progress": 0
   },
   "2": {
-    "name": "BloodThirsty",
-    "description": "Defeat 1000 enemies.",
-    "goal": 1000,
+    "name": "Zombie Slayer II",
+    "description": "Defeat 500 enemies.",
+    "goal": 500,
     "progress": 0
   },
   "3": {
+    "name": "BloodThirsty",
+    "description": "Defeat 2000 enemies.",
+    "goal": 2000,
+    "progress": 0
+  },
+  "4": {
     "name": "Trigger Happy",
     "description": "Fire 1000 bullets.",
     "goal": 1000,
     "progress": 0
   },
-  "4": {
+  "5": {
+    "name": "Lead Rain",
+    "description": "Fire 5000 bullets.",
+    "goal": 5000,
+    "progress": 0
+  },
+  "6": {
     "name": "Wave Rider",
     "description": "Survive until wave 8.",
     "goal": 8,
     "progress": 0
   },
-  "5": {
+  "7": {
+    "name": "Survivor Elite",
+    "description": "Survive until wave 15.",
+    "goal": 15,
+    "progress": 0
+  },
+  "8": {
     "name": "Lucky Draw",
     "description": "Collect 20 powerups.",
     "goal": 20,
+    "progress": 0
+  },
+  "9": {
+    "name": "Collector",
+    "description": "Collect 100 powerups.",
+    "goal": 100,
+    "progress": 0
+  },
+  "10": {
+    "name": "Big Earner",
+    "description": "Earn 1000 lifetime coins.",
+    "goal": 1000,
+    "progress": 0
+  },
+  "11": {
+    "name": "Millionaire",
+    "description": "Earn 5000 lifetime coins.",
+    "goal": 5000,
+    "progress": 0
+  },
+  "12": {
+    "name": "Boss Hunter",
+    "description": "Defeat 5 Bosses.",
+    "goal": 5,
+    "progress": 0
+  },
+  "13": {
+    "name": "Fashion Forward",
+    "description": "Purchase your first cosmetic.",
+    "goal": 1,
+    "progress": 0
+  },
+  "14": {
+    "name": "Completionist",
+    "description": "Own every single cosmetic item.",
+    "goal": 54,
+    "progress": 0
+  },
+  "15": {
+    "name": "Invested",
+    "description": "Purchase your first base upgrade.",
+    "goal": 1,
+    "progress": 0
+  },
+  "16": {
+    "name": "Peak Performance",
+    "description": "Max out all permanent upgrades.",
+    "goal": 25,
     "progress": 0
   }
 }

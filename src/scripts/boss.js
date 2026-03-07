@@ -22,7 +22,12 @@ export function createBoss(type, canvasWidth, canvasHeight) {
     const isFrost = type === "Frost-Core Construct";
     const isChrono = type === "The Chrono-Thief";
     const x = canvasWidth / 2 - 50;
-    const y = -150; 
+    const y = -200; // Snappier start
+
+    if (typeof showBossWarning === "function") {
+        showBossWarning(type.toUpperCase());
+    }
+
 
     return {
         type: type,
@@ -72,13 +77,10 @@ export function updateBoss(boss, player, projectiles, enemies, effects, timeScal
 
     // --- SHARED: ENTER PHASE ---
     if (boss.state === "enter") {
-        boss.y += 2 * timeScale;
-        if (boss.y >= 100) {
+        boss.y += 0.8 * timeScale; // Menacing slow descent for 7.5s
+        if (boss.y >= 150) {
             boss.state = "idle";
             boss.stateTimer = 0;
-            if (typeof showBossWarning === "function") {
-                showBossWarning(boss.type.toUpperCase());
-            }
         }
         return;
     }

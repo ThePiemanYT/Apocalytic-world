@@ -41,9 +41,10 @@ function renderAchievements() {
   Object.keys(achievements).forEach(id => {
     const a = achievements[id];
     const completed = a.progress >= a.goal;
+    const progressPercent = Math.min(100, (a.progress / a.goal) * 100);
 
     const box = document.createElement("div");
-    box.className = "achievementBox";
+    box.className = `achievementBox ${completed ? "completed" : ""}`;
     box.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h3 style="margin:0; font-size:14px; color:${completed ? "#4CAF50" : "#ffe066"};">
@@ -54,6 +55,9 @@ function renderAchievements() {
         </span>
       </div>
       <p style="margin:4px 0 0 0; font-size:12px; color:#ccc;">${a.description}</p>
+      <div class="achievementProgressBar">
+        <div class="achievementProgressFill" style="width: ${progressPercent}%;"></div>
+      </div>
     `;
     container.appendChild(box);
   });
@@ -62,20 +66,22 @@ function renderAchievements() {
 // Update achievement progress
 export function updateAchievement(id, amount = 1) {
   if (!achievements[id]) return;
+
+  const a = achievements[id];
   
-  // If it's a "high score" type (like Wave), overwrite if higher. Else add.
-  if (id === "4") { // Wave Reached
-      if (amount > achievements[id].progress) {
-          achievements[id].progress = amount;
-          saveAchievements();
+  // If it's a "high score" type (like Wave), overwrite if higher. 
+  if (id === "6" || id === "7") {
+      if (amount > a.progress) {
+          a.progress = Math.min(amount, a.goal);
       }
   } else {
-      // Accumulative (Kills, Bullets)
-      if (achievements[id].progress < achievements[id].goal) {
-          achievements[id].progress = Math.min(achievements[id].progress + amount, achievements[id].goal);
-          saveAchievements();
+      // Accumulative (Kills, Bullets, Coins, Powerups)
+      if (a.progress < a.goal) {
+          a.progress = Math.min(a.progress + amount, a.goal);
       }
   }
+  
+  saveAchievements();
   renderAchievements();
 }
 
@@ -90,9 +96,9 @@ export function resetAchievements() {
 
 // Hook loader when Achievements panel opens
 if (window.openPanel) {
-    const _openPanel = window.openPanel;
+    const _originalOpenPanel = window.openPanel;
     window.openPanel = function (id) {
-      _openPanel(id);
+      _originalOpenPanel(id);
       if (id === "achievementsPanel") {
         loadAchievements();
       }

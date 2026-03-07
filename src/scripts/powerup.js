@@ -151,7 +151,7 @@ export const powerupTypes = [
 ];
 
 function applyTimedPowerup(playerRef, typeName) {
-  const duration = 10000; 
+  const duration = (typeName === "TimeSlow") ? 5000 : 10000; 
   const expire = Date.now() + duration;
   activePowerups = activePowerups.filter(p => p.type !== typeName);
   activePowerups.push({ type: typeName, expireTime: expire });

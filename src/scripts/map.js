@@ -78,13 +78,24 @@ function prerenderMap() {
 }
 
 // --- 3. DRAWING FUNCTION ---
-export function drawMap(ctx, camera) {
+export function drawMap(ctx, camera, canvasWidth, canvasHeight, zoom) {
     if (!mapCache) prerenderMap();
-    // Simply draw the whole map offset by camera. 
-    // Since this is called inside ctx.scale(), it matches player coordinates.
-    const drawX = Math.floor(-camera.x);
-    const drawY = Math.floor(-camera.y);
-    ctx.drawImage(mapCache, drawX, drawY);
+    
+    // Calculate visible area in world coordinates
+    const viewW = canvasWidth / zoom;
+    const viewH = canvasHeight / zoom;
+    
+    // Source rect from mapCache
+    const sx = Math.max(0, camera.x);
+    const sy = Math.max(0, camera.y);
+    const sw = Math.min(mapCache.width - sx, viewW);
+    const sh = Math.min(mapCache.height - sy, viewH);
+    
+    // Destination rect on main canvas (already scaled by zoom in index.js)
+    const dx = -camera.x + sx;
+    const dy = -camera.y + sy;
+
+    ctx.drawImage(mapCache, sx, sy, sw, sh, dx, dy, sw, sh);
 }
 
 // --- 4. COLLISION LOGIC ---

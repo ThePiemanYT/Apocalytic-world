@@ -11,6 +11,36 @@ export let gameRunning = false;
 export let paused = false;
 export let score = 0;
 export let isReloading = false;
+export let showMinimap = localStorage.getItem("showMinimap") !== "false"; 
+
+export function setShowMinimap(val) { 
+    showMinimap = val; 
+    localStorage.setItem("showMinimap", val);
+}
+
+// --- LIFETIME STATS ---
+const defaultStats = {
+  totalKills: 0,
+  totalBulletsFired: 0,
+  totalDeaths: 0,
+  totalWavesSurvived: 0,
+  totalCoinsEarned: 0,
+  highScore: 0
+};
+
+const savedStats = JSON.parse(localStorage.getItem("lifetimeStats")) || {};
+export const lifetimeStats = { ...defaultStats, ...savedStats };
+
+export function updateLifetimeStat(key, amount = 1) {
+    if (key === 'highScore') {
+        if (amount > (lifetimeStats.highScore || 0)) {
+            lifetimeStats.highScore = amount;
+        }
+    } else {
+        lifetimeStats[key] = (lifetimeStats[key] || 0) + amount;
+    }
+    localStorage.setItem("lifetimeStats", JSON.stringify(lifetimeStats));
+}
 
 // --- MULTIPLAYER STATE ---
 export let isSinglePlayer = true; // Moved here from index.js
@@ -69,12 +99,22 @@ export const INITIAL_PLAYER_BASES = {
   baseCritMult: 1.5
 };
 
+const savedMetaUpgrades = JSON.parse(localStorage.getItem("metaUpgrades")) || {
+  health: 0,
+  speed: 0,
+  damage: 0,
+  magazine: 0,
+  reserve: 0,
+  totalSpent: 0
+};
+
 const savedCosmetics = JSON.parse(localStorage.getItem("playerCosmetics")) || {
   bodyColor: "cyan",
   eyeStyle: "normal",
   hatStyle: "none",
   indicatorStyle: "dot",
-  bulletStyle: "default" 
+  bulletStyle: "default",
+  trailStyle: "none"
 };
 
 export let player = {
@@ -86,6 +126,7 @@ export let player = {
   magazineSize: 50, ammo: 50, reserveAmmo: 1250,
   stamina: 125, maxStamina: 125,
   sprinting: false, dashActive: false, dashTime: 0, dashCooldown: 0,
+  metaUpgrades: savedMetaUpgrades,
   upgrades: { damage: 0, health: 0, speed: 0, magazine: 0, critChance: 0, critDamage: 0 },
   critChance: 0.05, critMultiplier: 1.5,
   lastHitTime: 0, immune: false,
@@ -111,6 +152,9 @@ export let player = {
   isDead: false, deathTimer: 0,
   isWinning: false, victoryTimer: 0,
   hurtTime: 0, maxHurtTime: 10,   
+  muzzleFlash: 0, 
+  chromaticAberration: 0,
+  critFeedback: 0,
   cosmetics: savedCosmetics
 };
 
@@ -130,20 +174,29 @@ export function recalcPlayerStats() {
   const critChancePerLevel = 0.05;
   const critMultPerLevel = 0.25;
 
-  player.maxHealth = INITIAL_PLAYER_BASES.maxHealth + (player.upgrades.health || 0) * hpPerLevel;
+  // Apply META upgrades first
+  const metaHP = (player.metaUpgrades.health || 0) * 2; // +2 HP per meta level
+  const metaSpeed = (player.metaUpgrades.speed || 0) * 0.25; // +0.25 speed per meta level
+  const metaDmg = (player.metaUpgrades.damage || 0) * 0.2; // +0.2 dmg per meta level (hidden base)
+  const metaMag = (player.metaUpgrades.magazine || 0) * 2; // +2 mag per meta level
+  const metaRsv = (player.metaUpgrades.reserve || 0) * 25; // +25 reserve per meta level
+
+  player.maxHealth = INITIAL_PLAYER_BASES.maxHealth + metaHP + (player.upgrades.health || 0) * hpPerLevel;
   if (typeof player.health !== 'number' || Number.isNaN(player.health)) player.health = player.maxHealth;
   player.health = Math.min(player.health, player.maxHealth);
 
-  player.normalSpeed = INITIAL_PLAYER_BASES.normalSpeed + (player.upgrades.speed || 0) * speedPerLevel;
-  player.sprintSpeed = INITIAL_PLAYER_BASES.sprintSpeed + (player.upgrades.speed || 0) * speedPerLevel;
-  player.magazineSize = INITIAL_PLAYER_BASES.magazine + (player.upgrades.magazine || 0) * magazinePerLevel;
+  player.normalSpeed = INITIAL_PLAYER_BASES.normalSpeed + metaSpeed + (player.upgrades.speed || 0) * speedPerLevel;
+  player.sprintSpeed = INITIAL_PLAYER_BASES.sprintSpeed + metaSpeed + (player.upgrades.speed || 0) * speedPerLevel;
+  player.magazineSize = INITIAL_PLAYER_BASES.magazine + metaMag + (player.upgrades.magazine || 0) * magazinePerLevel;
+  player.reserveAmmo = 1250 + metaRsv; 
   player.critChance = INITIAL_PLAYER_BASES.baseCritChance + (player.upgrades.critChance || 0) * critChancePerLevel;
   player.critMultiplier = INITIAL_PLAYER_BASES.baseCritMult + (player.upgrades.critDamage || 0) * critMultPerLevel;
   player.speed = player.sprinting ? player.sprintSpeed : player.normalSpeed;
 }
 
 export function getPlayerDamage() {
-  const base = INITIAL_PLAYER_BASES.baseDamage + (player.upgrades.damage || 0);
+  const metaDmg = (player.metaUpgrades.damage || 0) * 0.2;
+  const base = INITIAL_PLAYER_BASES.baseDamage + metaDmg + (player.upgrades.damage || 0);
   return player.doubleDamage ? base * 2 : base;
 }
 

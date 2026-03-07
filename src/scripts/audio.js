@@ -31,12 +31,33 @@ export const sounds = {
   "game-over": new Audio("src/assets/sound/victory.mp3"),
 };
 
-// Debug: Log if sounds fail to load
+// --- PRELOADER SUPPORT ---
+export const totalAssets = Object.keys(sounds).length + 1; // +1 for background music
+let loadedAssets = 0;
+let onProgressCallback = null;
+
+function itemLoaded() {
+    loadedAssets++;
+    if (onProgressCallback) onProgressCallback(loadedAssets, totalAssets);
+}
+
+export function setOnProgress(cb) { onProgressCallback = cb; }
+
+// Pre-load sounds and track progress
 Object.keys(sounds).forEach(key => {
-    sounds[key].onerror = () => console.error(`Audio Error: Could not load sound '${key}' from '${sounds[key].src}'`);
-    // Pre-load to ensure they are ready
+    sounds[key].addEventListener("canplaythrough", itemLoaded, { once: true });
+    sounds[key].onerror = () => {
+        console.error(`Audio Error: Could not load sound '${key}'`);
+        itemLoaded(); // Count as "loaded" so we don't hang
+    };
     sounds[key].load();
 });
+
+if (backgroundMusic) {
+    backgroundMusic.addEventListener("canplaythrough", itemLoaded, { once: true });
+    backgroundMusic.onerror = itemLoaded;
+    backgroundMusic.load();
+}
 
 export let musicEnabled = true;
 export let sfxEnabled = true;
