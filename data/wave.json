@@ -2,7 +2,8 @@
   {
     "wave": 1,
     "zombies": [
-      { "type": "Frost-Core Construct", "count": 1 }
+      { "type": "normal", "count": 4 },
+      { "type": "speed", "count": 2 }
     ]
   },
   {
@@ -148,4 +149,5 @@
       { "type": "Crusher", "count": 1 }
     ]
   }
+
 ]
